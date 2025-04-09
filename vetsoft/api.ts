@@ -95,12 +95,12 @@ app.get('/agendamentos', async (req, res) => {
       await targetCell.click();
       
       // Aguarda a tabela atualizar
-      await page.waitForTimeout(3000);
+      await page.waitForTimeout(1000);
     }
     
     console.log('Aguardando tabela carregar...');
-    await page.locator('#grid_Agenda').waitFor({ timeout: 30000 });
-    await page.waitForTimeout(2000);
+    await page.locator('#grid_Agenda').waitFor({ timeout: 1000 });
+    await page.waitForTimeout(1000);
 
     const rows = await page.locator('#grid_Agenda tbody tr').all();
     
