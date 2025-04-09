@@ -1,0 +1,11 @@
+# Arquivos de ambiente
+.env
+
+# Dependências
+node_modules/
+
+# Arquivos compilados
+dist/
+
+# Logs
+*.log
