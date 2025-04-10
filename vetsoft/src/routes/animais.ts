@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { chromium } from 'playwright';
 import { config } from '../config';
-import { selecionarDataPeriodo } from '../utils/calendar';
 
 const router = Router();
 
@@ -21,6 +20,8 @@ interface Animal {
 router.get('/ano/:ano', async (req, res) => {
   const ano = req.params.ano;
   
+  console.log(`Rota /animais/ano/${ano} foi chamada`);
+  
   if (!ano || isNaN(parseInt(ano))) {
     return res.status(400).json({
       success: false,
@@ -32,7 +33,7 @@ router.get('/ano/:ano', async (req, res) => {
     console.log(`Iniciando extração de animais para o ano ${ano}`);
     
     const browser = await chromium.launch({
-      headless: true
+      headless: false
     });
     
     const context = await browser.newContext();
@@ -53,28 +54,88 @@ router.get('/ano/:ano', async (req, res) => {
     await page.getByRole('textbox', { name: 'Senha * ' }).press('Enter');
     
     // Aguardar carregamento da página após login
-    await page.waitForSelector('.navbar-brand');
+    await page.waitForNavigation({ timeout: 30000 });
     console.log('Login realizado com sucesso');
     
     // Navegar para relatórios
     console.log('Acessando relatórios...');
-    await page.getByRole('link', { name: ' Relatórios' }).click();
+    await page.locator('a[href="/m/relatorios/"]').click();
+    await page.waitForTimeout(2000);
+    await page.getByRole('link', { name: 'Animais' }).click();
     await page.waitForTimeout(1000);
     await page.getByRole('link', { name: 'Lista de Animais' }).click();
     await page.waitForTimeout(2000);
     
     // Configurar visualização
     console.log('Configurando visualização...');
+    await page.getByRole('button', { name: ' Colunas' }).click();
+    await page.getByRole('checkbox', { name: '#' }).uncheck();
     await page.getByRole('button', { name: '+ ' }).click();
     await page.getByLabel('Visualizar').selectOption('3'); // Selecionar visualização completa
     
     // Selecionar período do ano
     console.log(`Selecionando período de 01/01/${ano} a 31/12/${ano}`);
-    await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-    await page.getByText('Escolher período').click();
     
-    // Selecionar data inicial e final
-    await selecionarDataPeriodo(page, parseInt(ano));
+    // Abrir o selecionador de datas
+    await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+    await page.waitForTimeout(1000);
+    
+    // Clicar em "Escolher período"
+    await page.getByText('Escolher período').click();
+    await page.waitForTimeout(1000);
+    
+    // Navegar para janeiro de 2022 (clicando nas setas para voltar)
+    console.log('Navegando para janeiro de 2022...');
+    
+    // Clicar repetidamente na seta para a esquerda até chegar em janeiro de 2022
+    // Usar o seletor exato baseado na estrutura HTML
+    const prevButton = page.locator('th.prev.available');
+    
+    // Clicar na seta para esquerda várias vezes para voltar até janeiro de 2022
+    // Vamos clicar um número fixo de vezes para garantir que chegamos em janeiro de 2022
+    // Assumindo que estamos em 2025, precisamos voltar 3 anos (36 meses)
+    console.log('Clicando na seta para esquerda para voltar até janeiro de 2022...');
+    for (let i = 0; i < 40; i++) {
+      await prevButton.first().click();
+      await page.waitForTimeout(100);
+    }
+    
+    // Agora devemos estar em algum mês de 2021 ou antes
+    // Vamos avançar mês a mês até chegarmos em janeiro de 2022
+    const nextButton = page.locator('th.next.available');
+    
+    // Avançar até janeiro de 2022
+    console.log('Ajustando para janeiro de 2022...');
+    for (let i = 0; i < 12; i++) {
+      // Verificar o mês e ano atual
+      const mesAnoTexto = await page.locator('.datepicker-switch').first().textContent();
+      console.log(`Mês e ano atual: ${mesAnoTexto}`);
+      
+      if (mesAnoTexto && mesAnoTexto.includes('jan 2022')) {
+        console.log('Chegamos em janeiro de 2022!');
+        break;
+      }
+      
+      await nextButton.first().click();
+      await page.waitForTimeout(100);
+    }
+    
+    // Selecionar o dia 1
+    await page.locator('td.available').filter({ hasText: '1' }).first().click();
+    await page.waitForTimeout(1000);
+    
+    // Agora, navegar para dezembro de 2022 no segundo calendário
+    console.log('Navegando para dezembro de 2022...');
+    
+    // Clicar na seta para direita várias vezes para avançar até dezembro de 2022
+    for (let i = 0; i < 11; i++) {
+      await nextButton.nth(1).click();
+      await page.waitForTimeout(100);
+    }
+    
+    // Selecionar o dia 31
+    await page.locator('td.available').filter({ hasText: '31' }).first().click();
+    await page.waitForTimeout(1000);
     
     // Filtrar
     await page.getByRole('button', { name: 'Filtrar' }).click();

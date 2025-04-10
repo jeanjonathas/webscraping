@@ -43,68 +43,150 @@ export async function selecionarData(page: Page, data: string, calendario: 'esqu
 
 // Função para selecionar o período de um ano inteiro (1 de janeiro a 31 de dezembro)
 export async function selecionarDataPeriodo(page: Page, ano: number) {
-  // Método simplificado para selecionar o período de um ano inteiro
+  // Método para navegar até o ano desejado e selecionar datas
   console.log(`Selecionando período de 01/01/${ano} a 31/12/${ano}`);
   
   // Selecionar data inicial (1 de janeiro)
-  await page.evaluate((ano) => {
-    // Encontrar o seletor de mês/ano e definir para janeiro do ano desejado
-    const seletorMesAno = document.querySelector('.datepicker-switch');
-    if (seletorMesAno) {
-      seletorMesAno.dispatchEvent(new MouseEvent('click'));
+  // Primeiro, vamos clicar no seletor de mês para abrir o calendário
+  await page.waitForTimeout(1000);
+  
+  // Navegação manual para o ano e mês desejados
+  await page.evaluate(async (targetYear) => {
+    // Função para clicar em um elemento
+    function clickElement(element: Element | null) {
+      if (element) {
+        element.dispatchEvent(new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window
+        }));
+      }
     }
     
-    // Clicar no ano
-    const seletorAno = Array.from(document.querySelectorAll('.year'))
-      .find(el => el.textContent === ano.toString());
-    if (seletorAno) {
-      seletorAno.dispatchEvent(new MouseEvent('click'));
+    // Abrir o seletor de mês/ano no primeiro calendário
+    const dateSwitch = document.querySelector('.datepicker-switch');
+    clickElement(dateSwitch);
+    
+    // Aguardar um pouco para a animação
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Abrir o seletor de ano
+    const yearSwitch = document.querySelector('.datepicker-switch');
+    clickElement(yearSwitch);
+    
+    // Aguardar um pouco para a animação
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Navegar pelos anos até encontrar o desejado
+    let foundYear = false;
+    let attempts = 0;
+    const maxAttempts = 20; // Limite de tentativas para evitar loop infinito
+    
+    while (!foundYear && attempts < maxAttempts) {
+      // Verificar se o ano desejado está visível
+      const yearElements = Array.from(document.querySelectorAll('.year'));
+      const targetYearElement = yearElements.find(el => el.textContent === targetYear.toString());
+      
+      if (targetYearElement) {
+        // Encontramos o ano, vamos clicar nele
+        clickElement(targetYearElement);
+        foundYear = true;
+        
+        // Aguardar um pouco para a animação
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Selecionar janeiro
+        const monthElements = Array.from(document.querySelectorAll('.month'));
+        const janElement = monthElements.find(el => el.textContent === 'Jan');
+        if (janElement) {
+          clickElement(janElement);
+          
+          // Aguardar um pouco para a animação
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Selecionar dia 1
+          const dayElements = Array.from(document.querySelectorAll('.day:not(.old):not(.new)'));
+          const day1Element = dayElements.find(el => el.textContent === '1');
+          if (day1Element) {
+            clickElement(day1Element);
+          }
+        }
+      } else {
+        // Ano não encontrado, vamos navegar para anos anteriores
+        const prevButton = document.querySelector('.prev');
+        if (prevButton) {
+          clickElement(prevButton);
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      attempts++;
     }
     
-    // Clicar em janeiro
-    const seletorJaneiro = Array.from(document.querySelectorAll('.month'))
-      .find(el => el.textContent === 'Jan');
-    if (seletorJaneiro) {
-      seletorJaneiro.dispatchEvent(new MouseEvent('click'));
-    }
+    // Aguardar um pouco antes de prosseguir
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Clicar no dia 1
-    const seletorDia1 = Array.from(document.querySelectorAll('.day:not(.old):not(.new)'))
-      .find(el => el.textContent === '1');
-    if (seletorDia1) {
-      seletorDia1.dispatchEvent(new MouseEvent('click'));
+    // Agora vamos selecionar a data final (31 de dezembro)
+    // Abrir o seletor de mês/ano no segundo calendário
+    const dateSwitch2 = document.querySelectorAll('.datepicker-switch')[1];
+    clickElement(dateSwitch2);
+    
+    // Aguardar um pouco para a animação
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Abrir o seletor de ano
+    const yearSwitch2 = document.querySelectorAll('.datepicker-switch')[1];
+    clickElement(yearSwitch2);
+    
+    // Aguardar um pouco para a animação
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Navegar pelos anos até encontrar o desejado
+    foundYear = false;
+    attempts = 0;
+    
+    while (!foundYear && attempts < maxAttempts) {
+      // Verificar se o ano desejado está visível
+      const yearElements = Array.from(document.querySelectorAll('.year'));
+      const targetYearElement = yearElements.find(el => el.textContent === targetYear.toString());
+      
+      if (targetYearElement) {
+        // Encontramos o ano, vamos clicar nele
+        clickElement(targetYearElement);
+        foundYear = true;
+        
+        // Aguardar um pouco para a animação
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Selecionar dezembro
+        const monthElements = Array.from(document.querySelectorAll('.month'));
+        const decElement = monthElements.find(el => el.textContent === 'Dez');
+        if (decElement) {
+          clickElement(decElement);
+          
+          // Aguardar um pouco para a animação
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Selecionar dia 31
+          const dayElements = Array.from(document.querySelectorAll('.day:not(.old):not(.new)'));
+          const day31Element = dayElements.find(el => el.textContent === '31');
+          if (day31Element) {
+            clickElement(day31Element);
+          }
+        }
+      } else {
+        // Ano não encontrado, vamos navegar para anos anteriores
+        const prevButton = document.querySelector('.prev');
+        if (prevButton) {
+          clickElement(prevButton);
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      attempts++;
     }
   }, ano);
   
-  await page.waitForTimeout(500);
-  
-  // Selecionar data final (31 de dezembro)
-  await page.evaluate((ano) => {
-    // Encontrar o seletor de mês/ano e definir para dezembro do ano desejado
-    const seletorMesAno = document.querySelectorAll('.datepicker-switch')[1];
-    if (seletorMesAno) {
-      seletorMesAno.dispatchEvent(new MouseEvent('click'));
-    }
-    
-    // Clicar no ano
-    const seletorAno = Array.from(document.querySelectorAll('.year'))
-      .find(el => el.textContent === ano.toString());
-    if (seletorAno) {
-      seletorAno.dispatchEvent(new MouseEvent('click'));
-    }
-    
-    // Clicar em dezembro
-    const seletorDezembro = Array.from(document.querySelectorAll('.month'))
-      .find(el => el.textContent === 'Dez');
-    if (seletorDezembro) {
-      seletorDezembro.dispatchEvent(new MouseEvent('click'));
-    }
-    
-    // Clicar no dia 31
-    const seletorDia31 = Array.from(document.querySelectorAll('.day:not(.old):not(.new)'))
-      .find(el => el.textContent === '31');
-    if (seletorDia31) {
-      seletorDia31.dispatchEvent(new MouseEvent('click'));
-    }
-  }, ano);
+  // Aguardar para garantir que a seleção foi concluída
+  await page.waitForTimeout(2000);
 }
