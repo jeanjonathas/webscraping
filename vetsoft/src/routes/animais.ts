@@ -101,12 +101,12 @@ router.get('/ano/:ano', async (req, res) => {
       await page.getByText('Escolher período').click();
       await page.waitForTimeout(1000);
       
-      // Primeiro, vamos verificar se estamos no ano correto (2022)
-      const anoAtual = await page.locator('.drp-calendar.right .month').textContent();
-      console.log(`Ano atual no calendário direito: ${anoAtual}`);
+      // Primeiro, vamos verificar o ano atual no calendário
+      const anoCalendario = await page.locator('.drp-calendar.right .month').textContent();
+      console.log(`Ano atual no calendário direito: ${anoCalendario}`);
       
       try {
-        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos voltar
+        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos navegar
         const mesAnoAtual = await page.locator('.drp-calendar.left .month').textContent();
         console.log(`Mês e ano atuais: ${mesAnoAtual}`);
         
@@ -127,68 +127,98 @@ router.get('/ano/:ano', async (req, res) => {
           }
         }
         
-        // Calcular quantos meses precisamos voltar para chegar a dezembro de 2021
-        // Fórmula: (anoAtual - 2021) * 12 + (mesAtual - 12)
-        // Exemplo: de abril de 2025 para dezembro de 2021 = (2025 - 2021) * 12 + (4 - 12) = 48 - 8 = 40 meses
-        let mesesParaVoltar = 0;
+        // Calcular quantos meses precisamos navegar
+        const anoDesejado = parseInt(ano); // Usar o ano passado como parâmetro
         
-        if (anoAtual > 0 && mesAtual > 0) {
-          // Calculamos para dezembro de 2021 e subtraímos 1 para parar em janeiro de 2022
-          const mesesParaDezembro = (anoAtual - 2021) * 12 + (mesAtual - 12);
-          mesesParaVoltar = mesesParaDezembro - 1;
-          console.log(`Meses para dezembro de 2021: ${mesesParaDezembro}, subtraindo 1 para janeiro de 2022: ${mesesParaVoltar}`);
-        } else {
-          // Valor padrão caso não consigamos calcular (40 - 1 = 39)
-          mesesParaVoltar = 39;
-          console.log(`Não foi possível calcular o número de meses, usando valor padrão: ${mesesParaVoltar}`);
-        }
-        
-        // Vamos voltar clicando na seta esquerda várias vezes até chegar em janeiro de 2022
-        console.log('Tentando voltar para janeiro de 2022 clicando na seta esquerda...');
-        
-        for (let i = 0; i < mesesParaVoltar; i++) {
-          await page.locator('.drp-calendar.left .prev.available').click();
-          await page.waitForTimeout(200);
+        // Verificar se precisamos ir para frente ou para trás
+        if (anoAtual > anoDesejado) {
+          // Precisamos voltar
+          const mesesParaVoltar = (anoAtual - anoDesejado) * 12 + mesAtual - 1; // -1 para ir para janeiro
+          console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
           
-          // A cada 5 cliques, verificamos o mês atual
-          if (i % 5 === 0 || i === mesesParaVoltar - 1) {
-            const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
-            console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
+          // Voltar para janeiro do ano desejado
+          console.log(`Tentando voltar para janeiro de ${anoDesejado} clicando na seta esquerda...`);
+          
+          for (let i = 0; i < mesesParaVoltar; i++) {
+            await page.locator('.drp-calendar.left .prev.available').click();
+            await page.waitForTimeout(200);
             
-            // Se chegamos em janeiro de 2022, podemos parar
-            if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes('jan 2022')) {
-              console.log('Chegamos em janeiro de 2022, parando a navegação');
-              break;
+            // A cada 5 cliques, verificamos o mês atual
+            if (i % 5 === 0 || i === mesesParaVoltar - 1) {
+              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
+              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
+              
+              // Se chegamos em janeiro do ano desejado, podemos parar
+              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
+                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
+                break;
+              }
+            }
+          }
+        } else if (anoAtual < anoDesejado) {
+          // Precisamos avançar
+          const mesesParaAvancar = (anoDesejado - anoAtual) * 12 - mesAtual + 1; // +1 para ir para janeiro
+          console.log(`Precisamos avançar ${mesesParaAvancar} meses para chegar em janeiro de ${anoDesejado}`);
+          
+          // Avançar para janeiro do ano desejado
+          console.log(`Tentando avançar para janeiro de ${anoDesejado} clicando na seta direita...`);
+          
+          for (let i = 0; i < mesesParaAvancar; i++) {
+            await page.locator('.drp-calendar.left .next.available').click();
+            await page.waitForTimeout(200);
+            
+            // A cada 5 cliques, verificamos o mês atual
+            if (i % 5 === 0 || i === mesesParaAvancar - 1) {
+              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
+              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
+              
+              // Se chegamos em janeiro do ano desejado, podemos parar
+              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
+                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
+                break;
+              }
+            }
+          }
+        } else {
+          // Estamos no mesmo ano, precisamos apenas ajustar o mês
+          if (mesAtual > 1) {
+            // Voltar para janeiro
+            const mesesParaVoltar = mesAtual - 1;
+            console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
+            
+            for (let i = 0; i < mesesParaVoltar; i++) {
+              await page.locator('.drp-calendar.left .prev.available').click();
+              await page.waitForTimeout(200);
             }
           }
         }
         
-        // Verificar se estamos em janeiro de 2022
+        // Verificar se estamos em janeiro do ano desejado
         const mesJaneiro = await page.locator('.drp-calendar.left .month').textContent();
         console.log(`Mês atual: ${mesJaneiro}`);
         
-        // Agora vamos clicar no dia 1 de janeiro de 2022
-        console.log('Clicando no dia 1 de janeiro de 2022...');
+        // Agora vamos clicar no dia 1 de janeiro do ano desejado
+        console.log(`Clicando no dia 1 de janeiro de ${anoDesejado}...`);
         
         try {
           // Tentar clicar no dia 1
           await page.locator('.drp-calendar.left td.available').filter({ hasText: '1' }).first().click();
           console.log('Clicado no dia 1 de janeiro');
         } catch (error) {
-          console.log('Erro ao clicar no dia 1, tentando dia 30...');
+          console.log('Erro ao clicar no dia 1, tentando outro dia disponível...');
           try {
-            await page.locator('.drp-calendar.left td.available').filter({ hasText: '30' }).first().click();
-            console.log('Clicado no dia 30 de dezembro');
-          } catch (error) {
-            console.log('Erro ao clicar no dia 30, tentando qualquer dia disponível...');
             await page.locator('.drp-calendar.left td.available').first().click();
+            console.log('Clicado em um dia disponível de janeiro');
+          } catch (error) {
+            console.log('Erro ao clicar em um dia disponível, tentando qualquer dia...');
+            await page.locator('.drp-calendar.left td').first().click();
           }
         }
         
         await page.waitForTimeout(500);
         
-        // Agora vamos navegar para dezembro de 2022
-        console.log('Navegando para dezembro de 2022...');
+        // Agora vamos navegar para dezembro do ano desejado
+        console.log(`Navegando para dezembro de ${anoDesejado}...`);
         
         // São 11 meses para frente (de janeiro a dezembro)
         for (let i = 0; i < 11; i++) {
@@ -200,16 +230,16 @@ router.get('/ano/:ano', async (req, res) => {
             const mesAtualDireito = await page.locator('.drp-calendar.right .month').textContent();
             console.log(`Mês direito após ${i+1} cliques: ${mesAtualDireito}`);
             
-            // Se chegamos em dezembro de 2022, podemos parar
+            // Se chegamos em dezembro do ano desejado, podemos parar
             if (mesAtualDireito && mesAtualDireito.includes('Dez')) {
-              console.log('Chegamos em dezembro de 2022');
+              console.log(`Chegamos em dezembro de ${anoDesejado}`);
               break;
             }
           }
         }
         
         // Agora vamos clicar no último dia de dezembro
-        console.log('Clicando no último dia de dezembro de 2022...');
+        console.log(`Clicando no último dia de dezembro de ${anoDesejado}...`);
         
         try {
           // Tentar clicar no dia 31
@@ -727,50 +757,146 @@ router.get('/exportar/:ano', async (req, res) => {
       await page.waitForTimeout(1000);
       
       try {
-        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos voltar
+        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos navegar
         const mesAnoAtual = await page.locator('.drp-calendar.left .month').textContent();
         console.log(`Mês e ano atuais: ${mesAnoAtual}`);
         
-        // Navegar até dezembro do ano desejado
-        // Primeiro, ir para janeiro do ano desejado
-        while (true) {
-          const mesAnoTexto = await page.locator('.drp-calendar.left .month').textContent();
-          console.log(`Mês e ano atual no calendário: ${mesAnoTexto}`);
+        // Navegar até janeiro do ano desejado
+        // Primeiro, vamos identificar o mês e ano atual
+        const mesAtual = await page.evaluate(() => {
+          const mesTexto = document.querySelector('.drp-calendar.left .month')?.textContent || '';
+          // Extrair mês e ano do texto (formato: "mmm YYYY", ex: "abr 2025")
+          const partes = mesTexto.split(' ');
+          const mes = partes[0];
+          const ano = partes.length > 1 ? parseInt(partes[1]) : new Date().getFullYear();
           
-          if (!mesAnoTexto) {
-            console.log('Não foi possível obter o mês e ano atual');
-            break;
-          }
+          // Mapear nome do mês para número
+          const meses: Record<string, number> = {
+            'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
+            'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
+          };
           
-          // Verificar se já estamos em janeiro do ano desejado
-          if (mesAnoTexto.includes('Janeiro') && mesAnoTexto.includes(ano)) {
-            console.log(`Chegamos em Janeiro de ${ano}`);
-            break;
-          }
+          return {
+            mes: meses[mes.toLowerCase()] || 1,
+            ano: ano
+          };
+        });
+        
+        console.log(`Mês atual: ${mesAtual.mes}, Ano atual: ${mesAtual.ano}`);
+        
+        // Calcular quantos meses precisamos navegar
+        const anoDesejado = parseInt(ano); // Usar o ano passado como parâmetro
+        
+        // Verificar se precisamos ir para frente ou para trás
+        if (mesAtual.ano > anoDesejado) {
+          // Precisamos voltar
+          const mesesParaVoltar = (mesAtual.ano - anoDesejado) * 12 + mesAtual.mes - 1; // -1 para ir para janeiro
+          console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
           
-          // Se estamos em um mês do ano desejado ou posterior, voltar um mês
-          if ((mesAnoTexto.includes(ano) && !mesAnoTexto.includes('Janeiro')) || 
-              parseInt(mesAnoTexto.split(' ')[1]) > parseInt(ano)) {
-            console.log('Clicando no botão de mês anterior...');
+          // Voltar para janeiro do ano desejado
+          console.log(`Tentando voltar para janeiro de ${anoDesejado} clicando na seta esquerda...`);
+          
+          for (let i = 0; i < mesesParaVoltar; i++) {
             await page.locator('.drp-calendar.left .prev.available').click();
-            await page.waitForTimeout(500);
-          } else {
-            // Se estamos em um ano anterior, avançar um mês
-            console.log('Clicando no botão de próximo mês...');
+            await page.waitForTimeout(200);
+            
+            // A cada 5 cliques, verificamos o mês atual
+            if (i % 5 === 0 || i === mesesParaVoltar - 1) {
+              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
+              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
+              
+              // Se chegamos em janeiro do ano desejado, podemos parar
+              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
+                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
+                break;
+              }
+            }
+          }
+        } else if (mesAtual.ano < anoDesejado) {
+          // Precisamos avançar
+          const mesesParaAvancar = (anoDesejado - mesAtual.ano) * 12 - mesAtual.mes + 1; // +1 para ir para janeiro
+          console.log(`Precisamos avançar ${mesesParaAvancar} meses para chegar em janeiro de ${anoDesejado}`);
+          
+          // Avançar para janeiro do ano desejado
+          console.log(`Tentando avançar para janeiro de ${anoDesejado} clicando na seta direita...`);
+          
+          for (let i = 0; i < mesesParaAvancar; i++) {
             await page.locator('.drp-calendar.left .next.available').click();
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(200);
+            
+            // A cada 5 cliques, verificamos o mês atual
+            if (i % 5 === 0 || i === mesesParaAvancar - 1) {
+              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
+              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
+              
+              // Se chegamos em janeiro do ano desejado, podemos parar
+              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
+                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
+                break;
+              }
+            }
+          }
+        } else {
+          // Estamos no mesmo ano, precisamos apenas ajustar o mês
+          if (mesAtual.mes > 1) {
+            // Voltar para janeiro
+            const mesesParaVoltar = mesAtual.mes - 1;
+            console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
+            
+            for (let i = 0; i < mesesParaVoltar; i++) {
+              await page.locator('.drp-calendar.left .prev.available').click();
+              await page.waitForTimeout(200);
+            }
           }
         }
         
-        // Agora, ir para dezembro do ano desejado
+        // Verificar se estamos em janeiro do ano desejado
+        const mesJaneiro = await page.locator('.drp-calendar.left .month').textContent();
+        console.log(`Mês atual: ${mesJaneiro}`);
+        
+        // Agora vamos clicar no dia 1 de janeiro do ano desejado
+        console.log(`Clicando no dia 1 de janeiro de ${anoDesejado}...`);
+        
+        try {
+          // Tentar clicar no dia 1
+          await page.locator('.drp-calendar.left td.available').filter({ hasText: '1' }).first().click();
+          console.log('Clicado no dia 1 de janeiro');
+        } catch (error) {
+          console.log('Erro ao clicar no dia 1, tentando outro dia disponível...');
+          try {
+            await page.locator('.drp-calendar.left td.available').first().click();
+            console.log('Clicado em um dia disponível de janeiro');
+          } catch (error) {
+            console.log('Erro ao clicar em um dia disponível, tentando qualquer dia...');
+            await page.locator('.drp-calendar.left td').first().click();
+          }
+        }
+        
+        await page.waitForTimeout(500);
+        
+        // Agora vamos navegar para dezembro do ano desejado
+        console.log(`Navegando para dezembro de ${anoDesejado}...`);
+        
+        // São 11 meses para frente (de janeiro a dezembro)
         for (let i = 0; i < 11; i++) {
-          console.log(`Avançando para o próximo mês (${i+2}/12)...`);
           await page.locator('.drp-calendar.right .next.available').click();
-          await page.waitForTimeout(500);
+          await page.waitForTimeout(300);
+          
+          // A cada 3 cliques, verificamos o mês atual
+          if (i % 3 === 0 || i === 10) {
+            const mesAtualDireito = await page.locator('.drp-calendar.right .month').textContent();
+            console.log(`Mês direito após ${i+1} cliques: ${mesAtualDireito}`);
+            
+            // Se chegamos em dezembro do ano desejado, podemos parar
+            if (mesAtualDireito && mesAtualDireito.includes('Dez')) {
+              console.log(`Chegamos em dezembro de ${anoDesejado}`);
+              break;
+            }
+          }
         }
         
         // Agora vamos clicar no último dia de dezembro
-        console.log('Clicando no último dia de dezembro de 2022...');
+        console.log(`Clicando no último dia de dezembro de ${anoDesejado}...`);
         
         try {
           // Tentar clicar no dia 31
