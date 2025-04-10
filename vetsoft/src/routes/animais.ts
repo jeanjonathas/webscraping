@@ -76,70 +76,172 @@ router.get('/ano/:ano', async (req, res) => {
     // Selecionar período do ano
     console.log(`Selecionando período de 01/01/${ano} a 31/12/${ano}`);
     
-    // Abrir o selecionador de datas
-    await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-    await page.waitForTimeout(1000);
-    
-    // Clicar em "Escolher período"
-    await page.getByText('Escolher período').click();
-    await page.waitForTimeout(1000);
-    
-    // Navegar para janeiro de 2022 (clicando nas setas para voltar)
-    console.log('Navegando para janeiro de 2022...');
-    
-    // Clicar repetidamente na seta para a esquerda até chegar em janeiro de 2022
-    // Usar o seletor exato baseado na estrutura HTML
-    const prevButton = page.locator('th.prev.available');
-    
-    // Clicar na seta para esquerda várias vezes para voltar até janeiro de 2022
-    // Vamos clicar um número fixo de vezes para garantir que chegamos em janeiro de 2022
-    // Assumindo que estamos em 2025, precisamos voltar 3 anos (36 meses)
-    console.log('Clicando na seta para esquerda para voltar até janeiro de 2022...');
-    for (let i = 0; i < 40; i++) {
-      await prevButton.first().click();
-      await page.waitForTimeout(100);
-    }
-    
-    // Agora devemos estar em algum mês de 2021 ou antes
-    // Vamos avançar mês a mês até chegarmos em janeiro de 2022
-    const nextButton = page.locator('th.next.available');
-    
-    // Avançar até janeiro de 2022
-    console.log('Ajustando para janeiro de 2022...');
-    for (let i = 0; i < 12; i++) {
-      // Verificar o mês e ano atual
-      const mesAnoTexto = await page.locator('.datepicker-switch').first().textContent();
-      console.log(`Mês e ano atual: ${mesAnoTexto}`);
+    try {
+      // Abrir o selecionador de datas
+      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+      await page.waitForTimeout(1000);
       
-      if (mesAnoTexto && mesAnoTexto.includes('jan 2022')) {
-        console.log('Chegamos em janeiro de 2022!');
-        break;
+      // Clicar em "Escolher período"
+      await page.getByText('Escolher período').click();
+      await page.waitForTimeout(1000);
+      
+      // Primeiro, vamos verificar se estamos no ano correto (2022)
+      const anoAtual = await page.locator('.drp-calendar.right .month').textContent();
+      console.log(`Ano atual no calendário direito: ${anoAtual}`);
+      
+      try {
+        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos voltar
+        const mesAnoAtual = await page.locator('.drp-calendar.left .month').textContent();
+        console.log(`Mês e ano atuais: ${mesAnoAtual}`);
+        
+        // Extrair o mês e ano do texto (formato esperado: "mmm YYYY", ex: "abr 2025")
+        let mesAtual = 0;
+        let anoAtual = 0;
+        
+        if (mesAnoAtual) {
+          const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+          const partes = mesAnoAtual.toLowerCase().split(' ');
+          
+          if (partes.length >= 2) {
+            const mesTxt = partes[0];
+            mesAtual = meses.indexOf(mesTxt) + 1; // 1-12
+            anoAtual = parseInt(partes[1]);
+            
+            console.log(`Mês atual: ${mesAtual}, Ano atual: ${anoAtual}`);
+          }
+        }
+        
+        // Calcular quantos meses precisamos voltar para chegar a dezembro de 2021
+        // Fórmula: (anoAtual - 2021) * 12 + (mesAtual - 12)
+        // Exemplo: de abril de 2025 para dezembro de 2021 = (2025 - 2021) * 12 + (4 - 12) = 48 - 8 = 40 meses
+        let mesesParaVoltar = 0;
+        
+        if (anoAtual > 0 && mesAtual > 0) {
+          // Calculamos para dezembro de 2021 e subtraímos 1 para parar em janeiro de 2022
+          const mesesParaDezembro = (anoAtual - 2021) * 12 + (mesAtual - 12);
+          mesesParaVoltar = mesesParaDezembro - 1;
+          console.log(`Meses para dezembro de 2021: ${mesesParaDezembro}, subtraindo 1 para janeiro de 2022: ${mesesParaVoltar}`);
+        } else {
+          // Valor padrão caso não consigamos calcular (40 - 1 = 39)
+          mesesParaVoltar = 39;
+          console.log(`Não foi possível calcular o número de meses, usando valor padrão: ${mesesParaVoltar}`);
+        }
+        
+        // Vamos voltar clicando na seta esquerda várias vezes até chegar em janeiro de 2022
+        console.log('Tentando voltar para janeiro de 2022 clicando na seta esquerda...');
+        
+        for (let i = 0; i < mesesParaVoltar; i++) {
+          await page.locator('.drp-calendar.left .prev.available').click();
+          await page.waitForTimeout(200);
+          
+          // A cada 5 cliques, verificamos o mês atual
+          if (i % 5 === 0 || i === mesesParaVoltar - 1) {
+            const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
+            console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
+            
+            // Se chegamos em janeiro de 2022, podemos parar
+            if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes('jan 2022')) {
+              console.log('Chegamos em janeiro de 2022, parando a navegação');
+              break;
+            }
+          }
+        }
+        
+        // Verificar se estamos em janeiro de 2022
+        const mesJaneiro = await page.locator('.drp-calendar.left .month').textContent();
+        console.log(`Mês atual: ${mesJaneiro}`);
+        
+        // Agora vamos clicar no dia 1 de janeiro de 2022
+        console.log('Clicando no dia 1 de janeiro de 2022...');
+        
+        // Primeiro, vamos verificar todas as células com o texto "1"
+        const celulasComDia1 = await page.locator('td').filter({ hasText: '1' }).all();
+        console.log(`Encontradas ${celulasComDia1.length} células com o texto "1"`);
+        
+        // Vamos verificar cada célula para encontrar a que corresponde ao dia 1 de janeiro de 2022
+        let diaEncontrado = false;
+        for (const celula of celulasComDia1) {
+          const classes = await celula.getAttribute('class');
+          const dataTitle = await celula.getAttribute('data-title');
+          console.log(`Célula com dia 1 - classes: ${classes}, data-title: ${dataTitle}`);
+          
+          // Verificar se a célula é do mês atual (não tem as classes 'off' ou 'old' ou 'new')
+          if (classes && !classes.includes('off') && !classes.includes('old') && !classes.includes('new')) {
+            console.log(`Encontrado dia 1 com data-title=${dataTitle}, clicando...`);
+            await celula.click();
+            diaEncontrado = true;
+            break;
+          }
+        }
+        
+        if (!diaEncontrado) {
+          console.log('Não foi possível encontrar o dia 1 de janeiro de 2022 específico, tentando alternativa...');
+          await page.locator('.drp-calendar.left td.available').filter({ hasText: '1' }).first().click();
+        }
+        
+        await page.waitForTimeout(500);
+        
+        // Agora vamos navegar para dezembro de 2022
+        console.log('Navegando para dezembro de 2022...');
+        
+        // São 11 meses para frente (de janeiro a dezembro)
+        for (let i = 0; i < 11; i++) {
+          await page.locator('.drp-calendar.right .next.available').click();
+          await page.waitForTimeout(300);
+          
+          // A cada 3 cliques, verificamos o mês atual
+          if (i % 3 === 0 || i === 10) {
+            const mesAtualDireito = await page.locator('.drp-calendar.right .month').textContent();
+            console.log(`Mês direito após ${i+1} cliques: ${mesAtualDireito}`);
+            
+            // Se chegamos em dezembro de 2022, podemos parar
+            if (mesAtualDireito && mesAtualDireito.toLowerCase().includes('dez 2022')) {
+              console.log('Chegamos em dezembro de 2022, parando a navegação');
+              break;
+            }
+          }
+        }
+        
+        // Agora vamos clicar no dia 31 de dezembro
+        console.log('Clicando no dia 31 de dezembro de 2022...');
+        
+        try {
+          // Tentar clicar no dia 31
+          await page.locator('.drp-calendar.right td.available').filter({ hasText: '31' }).first().click();
+          console.log('Clicado no dia 31 de dezembro');
+        } catch (error) {
+          console.log('Erro ao clicar no dia 31, tentando dia 30...');
+          try {
+            await page.locator('.drp-calendar.right td.available').filter({ hasText: '30' }).first().click();
+            console.log('Clicado no dia 30 de dezembro');
+          } catch (error) {
+            console.log('Erro ao clicar no dia 30, tentando qualquer dia disponível...');
+            await page.locator('.drp-calendar.right td.available').first().click();
+          }
+        }
+        
+      } catch (error) {
+        console.log(`Erro ao tentar ajustar o ano: ${error}`);
       }
       
-      await nextButton.first().click();
-      await page.waitForTimeout(100);
+      // Clicar no botão Aplicar se estiver disponível
+      try {
+        await page.locator('.applyBtn').click();
+        console.log('Clicado no botão Aplicar');
+      } catch (error) {
+        console.log('Botão Aplicar não encontrado ou não clicável');
+      }
+      
+      await page.waitForTimeout(1000);
+      
+      // Filtrar
+      await page.getByRole('button', { name: 'Filtrar' }).click();
+      await page.waitForTimeout(2000);
+      
+    } catch (error) {
+      console.error('Erro ao selecionar datas:', error);
+      return res.status(500).json({ success: false, error: error.message });
     }
-    
-    // Selecionar o dia 1
-    await page.locator('td.available').filter({ hasText: '1' }).first().click();
-    await page.waitForTimeout(1000);
-    
-    // Agora, navegar para dezembro de 2022 no segundo calendário
-    console.log('Navegando para dezembro de 2022...');
-    
-    // Clicar na seta para direita várias vezes para avançar até dezembro de 2022
-    for (let i = 0; i < 11; i++) {
-      await nextButton.nth(1).click();
-      await page.waitForTimeout(100);
-    }
-    
-    // Selecionar o dia 31
-    await page.locator('td.available').filter({ hasText: '31' }).first().click();
-    await page.waitForTimeout(1000);
-    
-    // Filtrar
-    await page.getByRole('button', { name: 'Filtrar' }).click();
-    await page.waitForTimeout(3000); // Aguardar carregamento dos resultados
     
     // Aguardar carregamento da tabela
     console.log('Aguardando tabela carregar...');
