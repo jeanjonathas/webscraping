@@ -255,9 +255,11 @@ router.get('/ano/:ano', async (req, res) => {
     
     await browser.close();
     
+    // Retornar os dados formatados
     return res.json({
-      success: true,
-      data: animais
+      total: animais.length,
+      periodo: `01/01/${ano} a 31/12/${ano}`,
+      animais: animais
     });
     
   } catch (error: any) {

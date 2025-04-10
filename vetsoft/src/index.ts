@@ -61,8 +61,13 @@ function formatarArray(valor: string | null | undefined): string[] {
   return valor.split(',').filter(item => item && item !== '---');
 }
 
+// Configuração do Express
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, '../public')));
+
+// Configurar o Express para formatar JSON de forma legível
+app.set('json spaces', 2);
 
 // Rotas da API
 app.use('/agendamentos', agendamentosRouter);
