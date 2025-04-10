@@ -12,7 +12,6 @@ router.post('/', async (req, res) => {
     codAnimal,     // Código do animal
     codCliente,    // Código do cliente
     servicos,      // Array de serviços (ex: ["Banho", "Tosa"])
-    observacoes    // Observações opcionais
   } = req.body;
 
   // Validação dos campos obrigatórios
@@ -48,24 +47,16 @@ router.post('/', async (req, res) => {
     await page.waitForTimeout(3000);
     await page.getByRole('link', { name: ' Estética' }).click();
 
-    // TODO: Implementar a lógica de adicionar agendamento
-    // 1. Clicar no botão de novo agendamento
-    // 2. Selecionar o cliente/animal
-    // 3. Selecionar data/hora
-    // 4. Selecionar serviços
-    // 5. Adicionar observações
-    // 6. Salvar
-
-    await browser.close();
-    
-    res.json({
-      success: true,
-      message: 'Agendamento criado com sucesso'
+    // Implementar a lógica de adicionar agendamento
+    return res.json({
+      success: false,
+      error: 'Funcionalidade ainda não implementada'
     });
 
+    await browser.close();
   } catch (error: any) {
     console.error('Erro:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message || 'Erro desconhecido'
     });

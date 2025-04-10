@@ -101,14 +101,14 @@ router.get('/', async (req, res) => {
 
     await browser.close();
     
-    res.json({
+    return res.json({
       success: true,
       data: agendamentos
     });
 
   } catch (error: any) {
     console.error('Erro:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message || 'Erro desconhecido'
     });
@@ -190,7 +190,7 @@ router.get('/periodo', async (req, res) => {
       const linkFicha = await row.locator('td:nth-child(4) a.ficha-cliente').first();
       const href = await linkFicha.getAttribute('href') || '';
       const urlParams = new URLSearchParams(href.split('?')[1]);
-      const codAnimal = urlParams.get('cod_animal') || '';
+      const codAnimalAtual = urlParams.get('cod_animal') || '';
       const codCliente = urlParams.get('cod_cliente')?.split('#')[0] || '';
       
       const nomePet = await row.locator('td:nth-child(4) b').textContent() || '';
@@ -204,14 +204,14 @@ router.get('/periodo', async (req, res) => {
       );
 
       // Se um código de animal foi especificado, filtra apenas os agendamentos desse animal
-      if (!codAnimal || codAnimal === urlParams.get('cod_animal')) {
+      if (!codAnimal || codAnimal === codAnimalAtual) {
         agendamentos.push({
           situacao: situacao.trim(),
           entrada: entrada.trim(),
           entrega: entrega.trim(),
           pet: {
             nome: nomePet.trim(),
-            codigo: codAnimal
+            codigo: codAnimalAtual
           },
           cliente: {
             nome: nomeCliente.trim(),
@@ -224,14 +224,14 @@ router.get('/periodo', async (req, res) => {
 
     await browser.close();
     
-    res.json({
+    return res.json({
       success: true,
       data: agendamentos
     });
 
   } catch (error: any) {
     console.error('Erro:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message || 'Erro desconhecido'
     });

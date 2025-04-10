@@ -9,5 +9,9 @@ export const config = {
   },
   server: {
     port: process.env.SERVER_PORT || 3000
+  },
+  supabase: {
+    url: process.env.SUPABASE_URL!,
+    key: process.env.SUPABASE_KEY!
   }
 };
