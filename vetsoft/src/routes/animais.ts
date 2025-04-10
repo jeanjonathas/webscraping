@@ -13,8 +13,10 @@ interface Animal {
   sexo: string;
   data_nascimento: string;
   data_cadastro: string;
+  data_obito: string | null;
   tutor_codigo: string;
   tutor_nome: string;
+  codigo_internacao: string | null;
 }
 
 // Rota para buscar animais por ano
@@ -155,29 +157,19 @@ router.get('/ano/:ano', async (req, res) => {
         // Agora vamos clicar no dia 1 de janeiro de 2022
         console.log('Clicando no dia 1 de janeiro de 2022...');
         
-        // Primeiro, vamos verificar todas as células com o texto "1"
-        const celulasComDia1 = await page.locator('td').filter({ hasText: '1' }).all();
-        console.log(`Encontradas ${celulasComDia1.length} células com o texto "1"`);
-        
-        // Vamos verificar cada célula para encontrar a que corresponde ao dia 1 de janeiro de 2022
-        let diaEncontrado = false;
-        for (const celula of celulasComDia1) {
-          const classes = await celula.getAttribute('class');
-          const dataTitle = await celula.getAttribute('data-title');
-          console.log(`Célula com dia 1 - classes: ${classes}, data-title: ${dataTitle}`);
-          
-          // Verificar se a célula é do mês atual (não tem as classes 'off' ou 'old' ou 'new')
-          if (classes && !classes.includes('off') && !classes.includes('old') && !classes.includes('new')) {
-            console.log(`Encontrado dia 1 com data-title=${dataTitle}, clicando...`);
-            await celula.click();
-            diaEncontrado = true;
-            break;
-          }
-        }
-        
-        if (!diaEncontrado) {
-          console.log('Não foi possível encontrar o dia 1 de janeiro de 2022 específico, tentando alternativa...');
+        try {
+          // Tentar clicar no dia 1
           await page.locator('.drp-calendar.left td.available').filter({ hasText: '1' }).first().click();
+          console.log('Clicado no dia 1 de janeiro');
+        } catch (error) {
+          console.log('Erro ao clicar no dia 1, tentando dia 30...');
+          try {
+            await page.locator('.drp-calendar.left td.available').filter({ hasText: '30' }).first().click();
+            console.log('Clicado no dia 30 de dezembro');
+          } catch (error) {
+            console.log('Erro ao clicar no dia 30, tentando qualquer dia disponível...');
+            await page.locator('.drp-calendar.left td.available').first().click();
+          }
         }
         
         await page.waitForTimeout(500);
@@ -196,15 +188,15 @@ router.get('/ano/:ano', async (req, res) => {
             console.log(`Mês direito após ${i+1} cliques: ${mesAtualDireito}`);
             
             // Se chegamos em dezembro de 2022, podemos parar
-            if (mesAtualDireito && mesAtualDireito.toLowerCase().includes('dez 2022')) {
-              console.log('Chegamos em dezembro de 2022, parando a navegação');
+            if (mesAtualDireito && mesAtualDireito.includes('Dez')) {
+              console.log('Chegamos em dezembro de 2022');
               break;
             }
           }
         }
         
-        // Agora vamos clicar no dia 31 de dezembro
-        console.log('Clicando no dia 31 de dezembro de 2022...');
+        // Agora vamos clicar no último dia de dezembro
+        console.log('Clicando no último dia de dezembro de 2022...');
         
         try {
           // Tentar clicar no dia 31
@@ -217,24 +209,104 @@ router.get('/ano/:ano', async (req, res) => {
             console.log('Clicado no dia 30 de dezembro');
           } catch (error) {
             console.log('Erro ao clicar no dia 30, tentando qualquer dia disponível...');
-            await page.locator('.drp-calendar.right td.available').first().click();
+            await page.locator('.drp-calendar.right td.available').last().click();
           }
-        }
-        
-        // Clicar no botão Aplicar se estiver disponível
-        try {
-          await page.locator('.applyBtn').click();
-          console.log('Clicado no botão Aplicar');
-        } catch (error) {
-          console.log('Botão Aplicar não encontrado ou não clicável');
         }
         
         await page.waitForTimeout(1000);
         
-        // Filtrar
-        await page.getByRole('button', { name: 'Filtrar' }).click();
-        await page.waitForTimeout(2000);
+        // Clicar no botão Aplicar para fechar o calendário
+        try {
+          await page.locator('.applyBtn').click();
+          console.log('Clicado no botão Aplicar do calendário');
+          await page.waitForTimeout(1000);
+        } catch (error) {
+          console.log('Erro ao clicar no botão Aplicar do calendário:', error);
+        }
         
+        // Clicar no botão Filtrar para aplicar o filtro
+        console.log('Clicando no botão Filtrar...');
+        let filtroAplicado = false;
+        
+        try {
+          await page.getByRole('button', { name: 'Filtrar' }).click();
+          console.log('Clicado no botão Filtrar usando getByRole');
+          filtroAplicado = true;
+        } catch (error) {
+          console.log('Erro ao clicar no botão Filtrar usando getByRole:', error);
+        }
+        
+        if (!filtroAplicado) {
+          try {
+            await page.locator('button.btn.btn-primary[title="Aplicar Filtros"]').click();
+            console.log('Clicado no botão Filtrar usando seletor CSS específico');
+            filtroAplicado = true;
+          } catch (error) {
+            console.log('Erro ao clicar no botão Filtrar usando seletor CSS específico:', error);
+          }
+        }
+        
+        if (!filtroAplicado) {
+          try {
+            await page.locator('button:has-text("Filtrar")').click();
+            console.log('Clicado no botão Filtrar usando seletor de texto');
+            filtroAplicado = true;
+          } catch (error) {
+            console.log('Erro ao clicar no botão Filtrar usando seletor de texto:', error);
+          }
+        }
+        
+        if (!filtroAplicado) {
+          try {
+            await page.evaluate(() => {
+              const botoes = Array.from(document.querySelectorAll('button'));
+              const botaoFiltrar = botoes.find(b => 
+                b.textContent?.includes('Filtrar') || 
+                b.getAttribute('title')?.includes('Aplicar Filtros')
+              );
+              if (botaoFiltrar) {
+                console.log('Botão encontrado via JS:', botaoFiltrar.textContent, botaoFiltrar.getAttribute('title'));
+                botaoFiltrar.click();
+                return true;
+              }
+              return false;
+            });
+            console.log('Tentativa de clicar no botão Filtrar por JavaScript');
+            filtroAplicado = true;
+          } catch (error) {
+            console.log('Erro ao clicar no botão Filtrar por JavaScript:', error);
+          }
+        }
+        
+        // Aguardar o carregamento da tabela com tempo maior
+        console.log('Aguardando o carregamento da tabela...');
+        await page.waitForTimeout(5000);
+        
+        // Verificar se a tabela foi carregada
+        const tabelaVisivel = await page.evaluate(() => {
+          const tabela = document.querySelector('#grid_RelatorioAnimais');
+          if (tabela) {
+            return true;
+          }
+          
+          // Verificar outras tabelas que possam conter os dados
+          const todasTabelas = document.querySelectorAll('table');
+          return todasTabelas.length > 0;
+        });
+        
+        console.log('Tabela visível:', tabelaVisivel);
+        
+        // Se a tabela não estiver visível, tentar clicar novamente
+        if (!tabelaVisivel) {
+          console.log('Tabela não carregada, tentando clicar novamente no botão Filtrar...');
+          try {
+            // Tentar todas as estratégias novamente
+            await page.getByRole('button', { name: 'Filtrar' }).click();
+            await page.waitForTimeout(5000);
+          } catch (error) {
+            console.log('Erro ao clicar novamente no botão Filtrar:', error);
+          }
+        }
       } catch (error) {
         console.log(`Erro ao tentar ajustar o ano: ${error}`);
       }
@@ -246,7 +318,12 @@ router.get('/ano/:ano', async (req, res) => {
     
     // Aguardar carregamento da tabela
     console.log('Aguardando tabela carregar...');
-    await page.waitForSelector('#datagrid_RelatorioAnimais', { timeout: 30000 });
+    try {
+      await page.waitForSelector('#grid_RelatorioAnimais', { timeout: 30000 });
+    } catch (error) {
+      console.log('Timeout ao esperar pela tabela. Continuando mesmo assim:', error);
+    }
+    
     await page.waitForTimeout(2000);
     
     // Extrair dados
@@ -255,7 +332,7 @@ router.get('/ano/:ano', async (req, res) => {
       const dados: any[] = [];
       
       // Tentar encontrar a tabela pelo ID
-      const tabela = document.querySelector('#datagrid_RelatorioAnimais');
+      const tabela = document.querySelector('#grid_RelatorioAnimais');
       console.log('Tabela encontrada:', !!tabela);
       
       if (!tabela) {
@@ -264,9 +341,166 @@ router.get('/ano/:ano', async (req, res) => {
         const todasTabelas = document.querySelectorAll('table');
         console.log('Total de tabelas na página:', todasTabelas.length);
         
-        for (let i = 0; i < todasTabelas.length; i++) {
-          const t = todasTabelas[i];
-          console.log(`Tabela ${i}:`, t.id, t.className);
+        // Converter NodeList para Array para iterar
+        const tabelasArray = Array.from(todasTabelas);
+        
+        for (const tabela of tabelasArray) {
+          // Processar as linhas da tabela
+          const linhas = Array.from(tabela.querySelectorAll('tbody tr'));
+          console.log('Total de linhas encontradas:', linhas.length);
+          
+          for (const linha of linhas) {
+            const colunas = linha.querySelectorAll('td');
+            
+            // Vamos logar o conteúdo das colunas para debug
+            const conteudoColunas = [];
+            for (let i = 0; i < colunas.length; i++) {
+              conteudoColunas.push(`Coluna ${i}: ${colunas[i].textContent?.trim()}`);
+            }
+            console.log('Conteúdo das colunas:', conteudoColunas);
+            
+            if (colunas.length >= 8) {
+              // Extrair código do animal do ID da linha
+              const linhaId = linha.getAttribute('id') || '';
+              let codigoCliente = "";
+              if (linhaId) {
+                const match = linhaId.match(/grid_RelatorioAnimais_row(\d+)/);
+                if (match && match[1]) {
+                  codigoCliente = match[1];
+                }
+              }
+              
+              // Extrair dados da tabela
+              const animalLink = colunas[1].querySelector('a');
+              let codigoAnimal = "";
+              let nomeAnimal = "";
+              let dataObito = null;
+              let codigoInternacao = null;
+              
+              // Tentar extrair data de óbito e código de internação do botão WhatsApp
+              const botaoWhatsapp = colunas[9]?.querySelector('button.btn-whatsapp');
+              if (botaoWhatsapp) {
+                const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
+                console.log('Onclick do botão WhatsApp:', onclickAttr);
+                
+                // Extrair o JSON da string do onclick
+                const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
+                if (jsonMatch && jsonMatch[1]) {
+                  try {
+                    // Substituir aspas simples escapadas por aspas duplas para poder fazer o parse
+                    const jsonStr = jsonMatch[1].replace(/\\'/g, '"').replace(/'/g, '"');
+                    console.log('String JSON processada:', jsonStr);
+                    
+                    // Fazer parse do JSON
+                    const dadosAnimal = JSON.parse(`{${jsonStr}}`);
+                    console.log('Dados do animal extraídos:', dadosAnimal);
+                    
+                    // Extrair data de óbito
+                    if (dadosAnimal.dat_obito && dadosAnimal.dat_obito !== 'null') {
+                      dataObito = dadosAnimal.dat_obito_f || dadosAnimal.dat_obito;
+                      console.log('Data de óbito encontrada:', dataObito);
+                    }
+                    
+                    // Extrair código de internação
+                    if (dadosAnimal.cod_internacao && dadosAnimal.cod_internacao !== 'null') {
+                      codigoInternacao = dadosAnimal.cod_internacao;
+                      console.log('Código de internação encontrado:', codigoInternacao);
+                    }
+                    
+                    // Se não tiver encontrado o código do animal antes, tenta pegar do JSON
+                    if (!codigoAnimal && dadosAnimal.cod_animal) {
+                      codigoAnimal = dadosAnimal.cod_animal;
+                      console.log('Código do animal extraído do JSON:', codigoAnimal);
+                    }
+                  } catch (e) {
+                    console.log('Erro ao fazer parse do JSON do botão WhatsApp:', e);
+                    
+                    // Tentar extrair manualmente
+                    try {
+                      const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\\'([^\\]+)\\'/);
+                      if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
+                        dataObito = dataObitoMatch[1];
+                        console.log('Data de óbito extraída manualmente:', dataObito);
+                      }
+                      
+                      const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\\'([^\\]+)\\'/);
+                      if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
+                        dataObito = dataObitoFMatch[1];
+                        console.log('Data de óbito formatada extraída manualmente:', dataObito);
+                      }
+                      
+                      const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\\'([^\\]+)\\'/);
+                      if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
+                        codigoInternacao = codInternacaoMatch[1];
+                        console.log('Código de internação extraído manualmente:', codigoInternacao);
+                      }
+                    } catch (manualError) {
+                      console.log('Erro na extração manual:', manualError);
+                    }
+                  }
+                }
+              }
+              
+              if (animalLink) {
+                const href = animalLink.getAttribute('href') || '';
+                const match = href.match(/cod_animal=(\d+)/);
+                if (match && match[1]) {
+                  codigoAnimal = match[1];
+                }
+                nomeAnimal = animalLink.textContent?.trim() || '';
+              } else {
+                nomeAnimal = colunas[1].textContent?.trim() || '';
+              }
+              
+              // Extrair espécie e raça (separar por /)
+              const especieRaca = colunas[2].textContent?.trim() || '';
+              let especie = '';
+              let raca = '';
+              
+              if (especieRaca.includes('/')) {
+                const partes = especieRaca.split('/');
+                especie = partes[0].trim();
+                raca = partes.slice(1).join('/').trim();
+              } else {
+                especie = especieRaca;
+              }
+              
+              // Extrair sexo, idade e data de cadastro
+              const sexo = colunas[3].textContent?.trim() || '';
+              const idade = colunas[4].textContent?.trim() || '';
+              const dataCadastro = colunas[5].textContent?.trim() || '';
+              
+              // Extrair o código do tutor do link
+              const tutorLink = colunas[7].querySelector('a');
+              let codigoTutor = "";
+              let nomeTutor = "";
+              
+              if (tutorLink) {
+                const href = tutorLink.getAttribute('href') || '';
+                const match = href.match(/cod_cliente=(\d+)/);
+                if (match && match[1]) {
+                  codigoTutor = match[1];
+                }
+                nomeTutor = tutorLink.textContent?.trim() || '';
+              } else {
+                nomeTutor = colunas[7].textContent?.trim() || '';
+              }
+              
+              dados.push({
+                codigo: codigoAnimal,
+                nome: nomeAnimal,
+                especie: especie,
+                raca: raca,
+                sexo: sexo,
+                data_nascimento: idade,
+                data_cadastro: dataCadastro,
+                data_obito: dataObito,
+                tutor_codigo: codigoTutor || codigoCliente, // Usar o código do cliente do ID da linha se não encontrar no link
+                tutor_nome: nomeTutor,
+                codigo_internacao: codigoInternacao
+              });
+            }
+          }
         }
         
         return dados;
@@ -277,40 +511,154 @@ router.get('/ano/:ano', async (req, res) => {
       console.log('Total de linhas encontradas:', linhas.length);
       
       for (const linha of linhas) {
+        // Extrair código do cliente do ID da linha
+        const linhaId = linha.getAttribute('id') || '';
+        let codigoCliente = "";
+        if (linhaId) {
+          const match = linhaId.match(/grid_RelatorioAnimais_row(\d+)/);
+          if (match && match[1]) {
+            codigoCliente = match[1];
+          }
+        }
+        
         const colunas = linha.querySelectorAll('td');
-        if (colunas.length >= 7) {
-          // Extrair o código do animal do link
-          const animalLink = colunas[0].querySelector('a');
+        
+        // Vamos logar o conteúdo das colunas para debug
+        const conteudoColunas = [];
+        for (let i = 0; i < colunas.length; i++) {
+          conteudoColunas.push(`Coluna ${i}: ${colunas[i].textContent?.trim()}`);
+        }
+        console.log('Conteúdo das colunas:', conteudoColunas);
+        
+        if (colunas.length >= 8) {
+          // Extrair dados da tabela
+          const animalLink = colunas[1].querySelector('a');
           let codigoAnimal = "";
+          let nomeAnimal = "";
+          let dataObito = null;
+          let codigoInternacao = null;
+          
+          // Tentar extrair data de óbito e código de internação do botão WhatsApp
+          const botaoWhatsapp = colunas[9]?.querySelector('button.btn-whatsapp');
+          if (botaoWhatsapp) {
+            const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
+            console.log('Onclick do botão WhatsApp:', onclickAttr);
+            
+            // Extrair o JSON da string do onclick
+            const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
+            if (jsonMatch && jsonMatch[1]) {
+              try {
+                // Substituir aspas simples escapadas por aspas duplas para poder fazer o parse
+                const jsonStr = jsonMatch[1].replace(/\\'/g, '"').replace(/'/g, '"');
+                console.log('String JSON processada:', jsonStr);
+                
+                // Fazer parse do JSON
+                const dadosAnimal = JSON.parse(`{${jsonStr}}`);
+                console.log('Dados do animal extraídos:', dadosAnimal);
+                
+                // Extrair data de óbito
+                if (dadosAnimal.dat_obito && dadosAnimal.dat_obito !== 'null') {
+                  dataObito = dadosAnimal.dat_obito_f || dadosAnimal.dat_obito;
+                  console.log('Data de óbito encontrada:', dataObito);
+                }
+                
+                // Extrair código de internação
+                if (dadosAnimal.cod_internacao && dadosAnimal.cod_internacao !== 'null') {
+                  codigoInternacao = dadosAnimal.cod_internacao;
+                  console.log('Código de internação encontrado:', codigoInternacao);
+                }
+                
+                // Se não tiver encontrado o código do animal antes, tenta pegar do JSON
+                if (!codigoAnimal && dadosAnimal.cod_animal) {
+                  codigoAnimal = dadosAnimal.cod_animal;
+                  console.log('Código do animal extraído do JSON:', codigoAnimal);
+                }
+              } catch (e) {
+                console.log('Erro ao fazer parse do JSON do botão WhatsApp:', e);
+                
+                // Tentar extrair manualmente
+                try {
+                  const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\\'([^\\]+)\\'/);
+                  if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
+                    dataObito = dataObitoMatch[1];
+                    console.log('Data de óbito extraída manualmente:', dataObito);
+                  }
+                  
+                  const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\\'([^\\]+)\\'/);
+                  if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
+                    dataObito = dataObitoFMatch[1];
+                    console.log('Data de óbito formatada extraída manualmente:', dataObito);
+                  }
+                  
+                  const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\\'([^\\]+)\\'/);
+                  if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
+                    codigoInternacao = codInternacaoMatch[1];
+                    console.log('Código de internação extraído manualmente:', codigoInternacao);
+                  }
+                } catch (manualError) {
+                  console.log('Erro na extração manual:', manualError);
+                }
+              }
+            }
+          }
+          
           if (animalLink) {
             const href = animalLink.getAttribute('href') || '';
             const match = href.match(/cod_animal=(\d+)/);
             if (match && match[1]) {
               codigoAnimal = match[1];
             }
+            nomeAnimal = animalLink.textContent?.trim() || '';
+          } else {
+            nomeAnimal = colunas[1].textContent?.trim() || '';
           }
           
+          // Extrair espécie e raça (separar por /)
+          const especieRaca = colunas[2].textContent?.trim() || '';
+          let especie = '';
+          let raca = '';
+          
+          if (especieRaca.includes('/')) {
+            const partes = especieRaca.split('/');
+            especie = partes[0].trim();
+            raca = partes.slice(1).join('/').trim();
+          } else {
+            especie = especieRaca;
+          }
+          
+          // Extrair sexo, idade e data de cadastro
+          const sexo = colunas[3].textContent?.trim() || '';
+          const idade = colunas[4].textContent?.trim() || '';
+          const dataCadastro = colunas[5].textContent?.trim() || '';
+          
           // Extrair o código do tutor do link
-          const tutorLink = colunas[6].querySelector('a');
+          const tutorLink = colunas[7].querySelector('a');
           let codigoTutor = "";
+          let nomeTutor = "";
+          
           if (tutorLink) {
             const href = tutorLink.getAttribute('href') || '';
             const match = href.match(/cod_cliente=(\d+)/);
             if (match && match[1]) {
               codigoTutor = match[1];
             }
+            nomeTutor = tutorLink.textContent?.trim() || '';
+          } else {
+            nomeTutor = colunas[7].textContent?.trim() || '';
           }
           
           dados.push({
             codigo: codigoAnimal,
-            nome: colunas[0].textContent?.trim() || '',
-            especie: colunas[1].textContent?.trim() || '',
-            raca: colunas[2].textContent?.trim() || '',
-            sexo: colunas[3].textContent?.trim() || '',
-            data_nascimento: colunas[4].textContent?.trim() || '',
-            data_cadastro: colunas[5].textContent?.trim() || '',
-            tutor_codigo: codigoTutor,
-            tutor_nome: colunas[6].textContent?.trim() || ''
+            nome: nomeAnimal,
+            especie: especie,
+            raca: raca,
+            sexo: sexo,
+            data_nascimento: idade,
+            data_cadastro: dataCadastro,
+            data_obito: dataObito,
+            tutor_codigo: codigoTutor || codigoCliente, // Usar o código do cliente do ID da linha se não encontrar no link
+            tutor_nome: nomeTutor,
+            codigo_internacao: codigoInternacao
           });
         }
       }
