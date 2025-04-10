@@ -4,13 +4,14 @@ import { config } from '../config';
 
 const router = Router();
 
+// Interface para os dados de animais
 interface Animal {
   codigo: string;
   nome: string;
   especie: string;
   raca: string;
   sexo: string;
-  data_nascimento: string | null;
+  data_nascimento: string;
   data_cadastro: string;
   tutor_codigo: string;
   tutor_nome: string;
@@ -220,23 +221,23 @@ router.get('/ano/:ano', async (req, res) => {
           }
         }
         
+        // Clicar no botão Aplicar se estiver disponível
+        try {
+          await page.locator('.applyBtn').click();
+          console.log('Clicado no botão Aplicar');
+        } catch (error) {
+          console.log('Botão Aplicar não encontrado ou não clicável');
+        }
+        
+        await page.waitForTimeout(1000);
+        
+        // Filtrar
+        await page.getByRole('button', { name: 'Filtrar' }).click();
+        await page.waitForTimeout(2000);
+        
       } catch (error) {
         console.log(`Erro ao tentar ajustar o ano: ${error}`);
       }
-      
-      // Clicar no botão Aplicar se estiver disponível
-      try {
-        await page.locator('.applyBtn').click();
-        console.log('Clicado no botão Aplicar');
-      } catch (error) {
-        console.log('Botão Aplicar não encontrado ou não clicável');
-      }
-      
-      await page.waitForTimeout(1000);
-      
-      // Filtrar
-      await page.getByRole('button', { name: 'Filtrar' }).click();
-      await page.waitForTimeout(2000);
       
     } catch (error) {
       console.error('Erro ao selecionar datas:', error);
@@ -250,7 +251,72 @@ router.get('/ano/:ano', async (req, res) => {
     
     // Extrair dados
     console.log('Extraindo dados da tabela...');
-    const animais = await extrairDadosDaTabela(page);
+    const animais: Animal[] = await page.evaluate(() => {
+      const dados: any[] = [];
+      
+      // Tentar encontrar a tabela pelo ID
+      const tabela = document.querySelector('#datagrid_RelatorioAnimais');
+      console.log('Tabela encontrada:', !!tabela);
+      
+      if (!tabela) {
+        console.log('Tabela não encontrada pelo ID, tentando outros seletores...');
+        // Tentar encontrar por outros seletores
+        const todasTabelas = document.querySelectorAll('table');
+        console.log('Total de tabelas na página:', todasTabelas.length);
+        
+        for (let i = 0; i < todasTabelas.length; i++) {
+          const t = todasTabelas[i];
+          console.log(`Tabela ${i}:`, t.id, t.className);
+        }
+        
+        return dados;
+      }
+      
+      // Processar as linhas da tabela
+      const linhas = Array.from(tabela.querySelectorAll('tbody tr'));
+      console.log('Total de linhas encontradas:', linhas.length);
+      
+      for (const linha of linhas) {
+        const colunas = linha.querySelectorAll('td');
+        if (colunas.length >= 7) {
+          // Extrair o código do animal do link
+          const animalLink = colunas[0].querySelector('a');
+          let codigoAnimal = "";
+          if (animalLink) {
+            const href = animalLink.getAttribute('href') || '';
+            const match = href.match(/cod_animal=(\d+)/);
+            if (match && match[1]) {
+              codigoAnimal = match[1];
+            }
+          }
+          
+          // Extrair o código do tutor do link
+          const tutorLink = colunas[6].querySelector('a');
+          let codigoTutor = "";
+          if (tutorLink) {
+            const href = tutorLink.getAttribute('href') || '';
+            const match = href.match(/cod_cliente=(\d+)/);
+            if (match && match[1]) {
+              codigoTutor = match[1];
+            }
+          }
+          
+          dados.push({
+            codigo: codigoAnimal,
+            nome: colunas[0].textContent?.trim() || '',
+            especie: colunas[1].textContent?.trim() || '',
+            raca: colunas[2].textContent?.trim() || '',
+            sexo: colunas[3].textContent?.trim() || '',
+            data_nascimento: colunas[4].textContent?.trim() || '',
+            data_cadastro: colunas[5].textContent?.trim() || '',
+            tutor_codigo: codigoTutor,
+            tutor_nome: colunas[6].textContent?.trim() || ''
+          });
+        }
+      }
+      
+      return dados;
+    });
     console.log(`Extraídos ${animais.length} animais`);
     
     await browser.close();
@@ -270,46 +336,5 @@ router.get('/ano/:ano', async (req, res) => {
     });
   }
 });
-
-async function extrairDadosDaTabela(page: any): Promise<Animal[]> {
-  return await page.evaluate(() => {
-    const animais: any[] = [];
-    const tabela = document.querySelector('#datagrid_RelatorioAnimais');
-    if (!tabela) return animais;
-    
-    const linhas = tabela.querySelectorAll('tbody tr');
-    
-    linhas.forEach(linha => {
-      const colunas = linha.querySelectorAll('td');
-      if (colunas.length < 8) return;
-      
-      // Extrair código do animal do link
-      const linkAnimal = colunas[1].querySelector('a');
-      const codigoAnimal = linkAnimal ? 
-        new URLSearchParams(linkAnimal.getAttribute('href')?.split('?')[1] || '').get('codigo') || '' : '';
-      
-      // Extrair código do tutor do link
-      const linkTutor = colunas[7].querySelector('a');
-      const codigoTutor = linkTutor ? 
-        new URLSearchParams(linkTutor.getAttribute('href')?.split('?')[1] || '').get('codigo') || '' : '';
-      
-      const animal = {
-        codigo: codigoAnimal,
-        nome: colunas[1].textContent?.trim() || '',
-        especie: colunas[2].textContent?.trim() || '',
-        raca: colunas[3].textContent?.trim() || '',
-        sexo: colunas[4].textContent?.trim() || '',
-        data_nascimento: colunas[5].textContent?.trim() || null,
-        data_cadastro: colunas[6].textContent?.trim() || '',
-        tutor_codigo: codigoTutor,
-        tutor_nome: colunas[7].textContent?.trim() || ''
-      };
-      
-      animais.push(animal);
-    });
-    
-    return animais;
-  });
-}
 
 export default router;
