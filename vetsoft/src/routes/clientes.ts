@@ -34,7 +34,7 @@ router.get('/busca', async (req, res) => {
       throw clientesError;
     }
 
-    res.json({
+    return res.json({
       success: true,
       data: clientes.map(cliente => ({
         codigo: cliente.codigo,
@@ -45,7 +45,7 @@ router.get('/busca', async (req, res) => {
 
   } catch (error: any) {
     console.error('Erro:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: error.message || 'Erro desconhecido'
     });

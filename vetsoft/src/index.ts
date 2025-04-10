@@ -74,6 +74,11 @@ app.use('/agendamentos', agendamentosRouter);
 app.use('/cadastro', cadastroRouter);
 app.use('/animais', animaisRouter);
 
+// Página para exportar animais
+app.get('/exportar-animais', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/exportar-animais.html'));
+});
+
 // API para importação de clientes
 app.post('/api/importar-clientes', upload.single('file'), async (req, res) => {
   if (!req.file) {
