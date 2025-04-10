@@ -383,61 +383,64 @@ router.get('/ano/:ano', async (req, res) => {
                 const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
                 console.log('Onclick do botão WhatsApp:', onclickAttr);
                 
-                // Extrair o JSON da string do onclick
-                const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
-                if (jsonMatch && jsonMatch[1]) {
-                  try {
-                    // Substituir aspas simples escapadas por aspas duplas para poder fazer o parse
-                    const jsonStr = jsonMatch[1].replace(/\\'/g, '"').replace(/'/g, '"');
-                    console.log('String JSON processada:', jsonStr);
+                // Verificar diretamente se contém informações de óbito
+                if (onclickAttr.includes('dat_obito')) {
+                  console.log('Atributo onclick contém informações de óbito');
+                  
+                  // Extrair data de óbito diretamente com regex
+                  const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\'([^']+)\\'/);
+                  if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
+                    dataObito = dataObitoMatch[1];
+                    console.log('Data de óbito extraída com regex:', dataObito);
+                  }
+                  
+                  // Tentar extrair data de óbito formatada
+                  const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\'([^']+)\\'/);
+                  if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
+                    dataObito = dataObitoFMatch[1];
+                    console.log('Data de óbito formatada extraída com regex:', dataObito);
+                  }
+                }
+                
+                // Verificar diretamente se contém informações de internação
+                if (onclickAttr.includes('cod_internacao')) {
+                  console.log('Atributo onclick contém informações de internação');
+                  
+                  // Extrair código de internação diretamente com regex
+                  const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\'([^']+)\\'/);
+                  if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
+                    codigoInternacao = codInternacaoMatch[1];
+                    console.log('Código de internação extraído com regex:', codigoInternacao);
+                  }
+                }
+                
+                // Tentar extrair o código do animal se ainda não tiver
+                if (!codigoAnimal && onclickAttr.includes('cod_animal')) {
+                  const codAnimalMatch = onclickAttr.match(/cod_animal\\':\\'([^']+)\\'/);
+                  if (codAnimalMatch && codAnimalMatch[1]) {
+                    codigoAnimal = codAnimalMatch[1];
+                    console.log('Código do animal extraído com regex:', codigoAnimal);
+                  }
+                }
+                
+                // Método alternativo: tentar extrair o JSON completo
+                try {
+                  const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
+                  if (jsonMatch && jsonMatch[1]) {
+                    // Tentar extrair os dados diretamente do texto JSON sem fazer parse
+                    console.log('Texto JSON encontrado:', jsonMatch[1]);
                     
-                    // Fazer parse do JSON
-                    const dadosAnimal = JSON.parse(`{${jsonStr}}`);
-                    console.log('Dados do animal extraídos:', dadosAnimal);
-                    
-                    // Extrair data de óbito
-                    if (dadosAnimal.dat_obito && dadosAnimal.dat_obito !== 'null') {
-                      dataObito = dadosAnimal.dat_obito_f || dadosAnimal.dat_obito;
-                      console.log('Data de óbito encontrada:', dataObito);
-                    }
-                    
-                    // Extrair código de internação
-                    if (dadosAnimal.cod_internacao && dadosAnimal.cod_internacao !== 'null') {
-                      codigoInternacao = dadosAnimal.cod_internacao;
-                      console.log('Código de internação encontrado:', codigoInternacao);
-                    }
-                    
-                    // Se não tiver encontrado o código do animal antes, tenta pegar do JSON
-                    if (!codigoAnimal && dadosAnimal.cod_animal) {
-                      codigoAnimal = dadosAnimal.cod_animal;
-                      console.log('Código do animal extraído do JSON:', codigoAnimal);
-                    }
-                  } catch (e) {
-                    console.log('Erro ao fazer parse do JSON do botão WhatsApp:', e);
-                    
-                    // Tentar extrair manualmente
-                    try {
-                      const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\\'([^\\]+)\\'/);
-                      if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
-                        dataObito = dataObitoMatch[1];
-                        console.log('Data de óbito extraída manualmente:', dataObito);
+                    // Se ainda não tiver encontrado a data de óbito, tentar novamente
+                    if (!dataObito && jsonMatch[1].includes('dat_obito')) {
+                      const match = jsonMatch[1].match(/dat_obito_f\':\\'([^']+)\\'/);
+                      if (match && match[1] && match[1] !== 'null') {
+                        dataObito = match[1];
+                        console.log('Data de óbito extraída do texto JSON:', dataObito);
                       }
-                      
-                      const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\\'([^\\]+)\\'/);
-                      if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
-                        dataObito = dataObitoFMatch[1];
-                        console.log('Data de óbito formatada extraída manualmente:', dataObito);
-                      }
-                      
-                      const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\\'([^\\]+)\\'/);
-                      if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
-                        codigoInternacao = codInternacaoMatch[1];
-                        console.log('Código de internação extraído manualmente:', codigoInternacao);
-                      }
-                    } catch (manualError) {
-                      console.log('Erro na extração manual:', manualError);
                     }
                   }
+                } catch (e) {
+                  console.log('Erro ao processar o texto JSON:', e);
                 }
               }
               
@@ -544,61 +547,64 @@ router.get('/ano/:ano', async (req, res) => {
             const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
             console.log('Onclick do botão WhatsApp:', onclickAttr);
             
-            // Extrair o JSON da string do onclick
-            const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
-            if (jsonMatch && jsonMatch[1]) {
-              try {
-                // Substituir aspas simples escapadas por aspas duplas para poder fazer o parse
-                const jsonStr = jsonMatch[1].replace(/\\'/g, '"').replace(/'/g, '"');
-                console.log('String JSON processada:', jsonStr);
+            // Verificar diretamente se contém informações de óbito
+            if (onclickAttr.includes('dat_obito')) {
+              console.log('Atributo onclick contém informações de óbito');
+              
+              // Extrair data de óbito diretamente com regex
+              const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\'([^']+)\\'/);
+              if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
+                dataObito = dataObitoMatch[1];
+                console.log('Data de óbito extraída com regex:', dataObito);
+              }
+              
+              // Tentar extrair data de óbito formatada
+              const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\'([^']+)\\'/);
+              if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
+                dataObito = dataObitoFMatch[1];
+                console.log('Data de óbito formatada extraída com regex:', dataObito);
+              }
+            }
+            
+            // Verificar diretamente se contém informações de internação
+            if (onclickAttr.includes('cod_internacao')) {
+              console.log('Atributo onclick contém informações de internação');
+              
+              // Extrair código de internação diretamente com regex
+              const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\'([^']+)\\'/);
+              if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
+                codigoInternacao = codInternacaoMatch[1];
+                console.log('Código de internação extraído com regex:', codigoInternacao);
+              }
+            }
+            
+            // Tentar extrair o código do animal se ainda não tiver
+            if (!codigoAnimal && onclickAttr.includes('cod_animal')) {
+              const codAnimalMatch = onclickAttr.match(/cod_animal\\':\\'([^']+)\\'/);
+              if (codAnimalMatch && codAnimalMatch[1]) {
+                codigoAnimal = codAnimalMatch[1];
+                console.log('Código do animal extraído com regex:', codigoAnimal);
+              }
+            }
+            
+            // Método alternativo: tentar extrair o JSON completo
+            try {
+              const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
+              if (jsonMatch && jsonMatch[1]) {
+                // Tentar extrair os dados diretamente do texto JSON sem fazer parse
+                console.log('Texto JSON encontrado:', jsonMatch[1]);
                 
-                // Fazer parse do JSON
-                const dadosAnimal = JSON.parse(`{${jsonStr}}`);
-                console.log('Dados do animal extraídos:', dadosAnimal);
-                
-                // Extrair data de óbito
-                if (dadosAnimal.dat_obito && dadosAnimal.dat_obito !== 'null') {
-                  dataObito = dadosAnimal.dat_obito_f || dadosAnimal.dat_obito;
-                  console.log('Data de óbito encontrada:', dataObito);
-                }
-                
-                // Extrair código de internação
-                if (dadosAnimal.cod_internacao && dadosAnimal.cod_internacao !== 'null') {
-                  codigoInternacao = dadosAnimal.cod_internacao;
-                  console.log('Código de internação encontrado:', codigoInternacao);
-                }
-                
-                // Se não tiver encontrado o código do animal antes, tenta pegar do JSON
-                if (!codigoAnimal && dadosAnimal.cod_animal) {
-                  codigoAnimal = dadosAnimal.cod_animal;
-                  console.log('Código do animal extraído do JSON:', codigoAnimal);
-                }
-              } catch (e) {
-                console.log('Erro ao fazer parse do JSON do botão WhatsApp:', e);
-                
-                // Tentar extrair manualmente
-                try {
-                  const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\\'([^\\]+)\\'/);
-                  if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
-                    dataObito = dataObitoMatch[1];
-                    console.log('Data de óbito extraída manualmente:', dataObito);
+                // Se ainda não tiver encontrado a data de óbito, tentar novamente
+                if (!dataObito && jsonMatch[1].includes('dat_obito')) {
+                  const match = jsonMatch[1].match(/dat_obito_f\':\\'([^']+)\\'/);
+                  if (match && match[1] && match[1] !== 'null') {
+                    dataObito = match[1];
+                    console.log('Data de óbito extraída do texto JSON:', dataObito);
                   }
-                  
-                  const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\\'([^\\]+)\\'/);
-                  if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
-                    dataObito = dataObitoFMatch[1];
-                    console.log('Data de óbito formatada extraída manualmente:', dataObito);
-                  }
-                  
-                  const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\\'([^\\]+)\\'/);
-                  if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
-                    codigoInternacao = codInternacaoMatch[1];
-                    console.log('Código de internação extraído manualmente:', codigoInternacao);
-                  }
-                } catch (manualError) {
-                  console.log('Erro na extração manual:', manualError);
                 }
               }
+            } catch (e) {
+              console.log('Erro ao processar o texto JSON:', e);
             }
           }
           
