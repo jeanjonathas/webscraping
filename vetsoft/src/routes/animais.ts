@@ -1,8 +1,11 @@
 import { Router } from 'express';
-import { chromium } from 'playwright';
 import { config } from '../config';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
+import { 
+  navigateToRelatorioAnimais, 
+  resetSession 
+} from '../utils/browserSession';
 
 const router = Router();
 
@@ -48,335 +51,28 @@ router.get('/ano/:ano', async (req, res) => {
   try {
     console.log(`Iniciando extração de animais para o ano ${ano}`);
     
-    const browser = await chromium.launch({
-      headless: false
-    });
+    // Usar o modo headless com base no parâmetro da query
+    const showBrowser = req.query.show === 'true';
+    const headless = !showBrowser;
     
-    const context = await browser.newContext();
-    const page = await context.newPage();
+    // Verificar se deve forçar a atualização da página
+    const forceRefresh = req.query.refresh === 'true';
     
-    // Login
-    console.log('Iniciando navegação...');
-    await page.goto('https://dranimal.vetsoft.com.br/', {
-      timeout: 60000,
-      waitUntil: 'domcontentloaded'
-    });
+    // Navegar para a página de relatórios de animais com o ano especificado
+    const page = await navigateToRelatorioAnimais(headless, forceRefresh, ano);
     
-    await page.waitForTimeout(2000);
+    // Capturar screenshot para debug
+    await page.screenshot({ path: `animais-${ano}-screenshot.png` });
+    console.log(`Screenshot salvo em animais-${ano}-screenshot.png`);
     
-    console.log('Página carregada, realizando login...');
-    await page.getByRole('textbox', { name: 'Usuário *' }).fill(config.vetsoft.username!);
-    await page.getByRole('textbox', { name: 'Senha * ' }).fill(config.vetsoft.password!);
-    await page.getByRole('textbox', { name: 'Senha * ' }).press('Enter');
-    
-    // Aguardar carregamento da página após login
-    await page.waitForNavigation({ timeout: 30000 });
-    console.log('Login realizado com sucesso');
-    
-    // Navegar para relatórios
-    console.log('Acessando relatórios...');
-    await page.locator('a[href="/m/relatorios/"]').click();
-    await page.waitForTimeout(2000);
-    await page.getByRole('link', { name: 'Animais' }).click();
-    await page.waitForTimeout(1000);
-    await page.getByRole('link', { name: 'Lista de Animais' }).click();
-    await page.waitForTimeout(2000);
-    
-    // Configurar visualização
-    console.log('Configurando visualização...');
-    await page.getByRole('button', { name: ' Colunas' }).click();
-    await page.getByRole('checkbox', { name: '#' }).uncheck();
-    await page.getByRole('button', { name: '+ ' }).click();
-    await page.getByLabel('Visualizar').selectOption('3'); // Selecionar visualização completa
-    
-    // Selecionar período do ano
-    console.log(`Selecionando período de 01/01/${ano} a 31/12/${ano}`);
-    
-    try {
-      // Abrir o selecionador de datas
-      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-      await page.waitForTimeout(1000);
-      
-      // Clicar em "Escolher período"
-      await page.getByText('Escolher período').click();
-      await page.waitForTimeout(1000);
-      
-      // Primeiro, vamos verificar o ano atual no calendário
-      const anoCalendario = await page.locator('.drp-calendar.right .month').textContent();
-      console.log(`Ano atual no calendário direito: ${anoCalendario}`);
-      
-      try {
-        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos navegar
-        const mesAnoAtual = await page.locator('.drp-calendar.left .month').textContent();
-        console.log(`Mês e ano atuais: ${mesAnoAtual}`);
-        
-        // Extrair o mês e ano do texto (formato esperado: "mmm YYYY", ex: "abr 2025")
-        let mesAtual = 0;
-        let anoAtual = 0;
-        
-        if (mesAnoAtual) {
-          const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-          const partes = mesAnoAtual.toLowerCase().split(' ');
-          
-          if (partes.length >= 2) {
-            const mesTxt = partes[0];
-            mesAtual = meses.indexOf(mesTxt) + 1; // 1-12
-            anoAtual = parseInt(partes[1]);
-            
-            console.log(`Mês atual: ${mesAtual}, Ano atual: ${anoAtual}`);
-          }
-        }
-        
-        // Calcular quantos meses precisamos navegar
-        const anoDesejado = parseInt(ano); // Usar o ano passado como parâmetro
-        
-        // Verificar se precisamos ir para frente ou para trás
-        if (anoAtual > anoDesejado) {
-          // Precisamos voltar
-          const mesesParaVoltar = (anoAtual - anoDesejado) * 12 + mesAtual - 1; // -1 para ir para janeiro
-          console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
-          
-          // Voltar para janeiro do ano desejado
-          console.log(`Tentando voltar para janeiro de ${anoDesejado} clicando na seta esquerda...`);
-          
-          for (let i = 0; i < mesesParaVoltar; i++) {
-            await page.locator('.drp-calendar.left .prev.available').click();
-            await page.waitForTimeout(200);
-            
-            // A cada 5 cliques, verificamos o mês atual
-            if (i % 5 === 0 || i === mesesParaVoltar - 1) {
-              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
-              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
-              
-              // Se chegamos em janeiro do ano desejado, podemos parar
-              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
-                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
-                break;
-              }
-            }
-          }
-        } else if (anoAtual < anoDesejado) {
-          // Precisamos avançar
-          const mesesParaAvancar = (anoDesejado - anoAtual) * 12 - mesAtual + 1; // +1 para ir para janeiro
-          console.log(`Precisamos avançar ${mesesParaAvancar} meses para chegar em janeiro de ${anoDesejado}`);
-          
-          // Avançar para janeiro do ano desejado
-          console.log(`Tentando avançar para janeiro de ${anoDesejado} clicando na seta direita...`);
-          
-          for (let i = 0; i < mesesParaAvancar; i++) {
-            await page.locator('.drp-calendar.left .next.available').click();
-            await page.waitForTimeout(200);
-            
-            // A cada 5 cliques, verificamos o mês atual
-            if (i % 5 === 0 || i === mesesParaAvancar - 1) {
-              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
-              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
-              
-              // Se chegamos em janeiro do ano desejado, podemos parar
-              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
-                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
-                break;
-              }
-            }
-          }
-        } else {
-          // Estamos no mesmo ano, precisamos apenas ajustar o mês
-          if (mesAtual > 1) {
-            // Voltar para janeiro
-            const mesesParaVoltar = mesAtual - 1;
-            console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
-            
-            for (let i = 0; i < mesesParaVoltar; i++) {
-              await page.locator('.drp-calendar.left .prev.available').click();
-              await page.waitForTimeout(200);
-            }
-          }
-        }
-        
-        // Verificar se estamos em janeiro do ano desejado
-        const mesJaneiro = await page.locator('.drp-calendar.left .month').textContent();
-        console.log(`Mês atual: ${mesJaneiro}`);
-        
-        // Agora vamos clicar no dia 1 de janeiro do ano desejado
-        console.log(`Clicando no dia 1 de janeiro de ${anoDesejado}...`);
-        
-        try {
-          // Tentar clicar no dia 1
-          await page.locator('.drp-calendar.left td.available').filter({ hasText: '1' }).first().click();
-          console.log('Clicado no dia 1 de janeiro');
-        } catch (error) {
-          console.log('Erro ao clicar no dia 1, tentando outro dia disponível...');
-          try {
-            await page.locator('.drp-calendar.left td.available').first().click();
-            console.log('Clicado em um dia disponível de janeiro');
-          } catch (error) {
-            console.log('Erro ao clicar em um dia disponível, tentando qualquer dia...');
-            await page.locator('.drp-calendar.left td').first().click();
-          }
-        }
-        
-        await page.waitForTimeout(500);
-        
-        // Agora vamos navegar para dezembro do ano desejado
-        console.log(`Navegando para dezembro de ${anoDesejado}...`);
-        
-        // São 11 meses para frente (de janeiro a dezembro)
-        for (let i = 0; i < 11; i++) {
-          await page.locator('.drp-calendar.right .next.available').click();
-          await page.waitForTimeout(300);
-          
-          // A cada 3 cliques, verificamos o mês atual
-          if (i % 3 === 0 || i === 10) {
-            const mesAtualDireito = await page.locator('.drp-calendar.right .month').textContent();
-            console.log(`Mês direito após ${i+1} cliques: ${mesAtualDireito}`);
-            
-            // Se chegamos em dezembro do ano desejado, podemos parar
-            if (mesAtualDireito && mesAtualDireito.includes('Dez')) {
-              console.log(`Chegamos em dezembro de ${anoDesejado}`);
-              break;
-            }
-          }
-        }
-        
-        // Agora vamos clicar no último dia de dezembro
-        console.log(`Clicando no último dia de dezembro de ${anoDesejado}...`);
-        
-        try {
-          // Tentar clicar no dia 31
-          await page.locator('.drp-calendar.right td.available').filter({ hasText: '31' }).first().click();
-          console.log('Clicado no dia 31 de dezembro');
-        } catch (error) {
-          console.log('Erro ao clicar no dia 31, tentando dia 30...');
-          try {
-            await page.locator('.drp-calendar.right td.available').filter({ hasText: '30' }).first().click();
-            console.log('Clicado no dia 30 de dezembro');
-          } catch (error) {
-            console.log('Erro ao clicar no dia 30, tentando qualquer dia disponível...');
-            await page.locator('.drp-calendar.right td.available').last().click();
-          }
-        }
-        
-        await page.waitForTimeout(1000);
-        
-        // Clicar no botão Aplicar para fechar o calendário
-        try {
-          await page.locator('.applyBtn').click();
-          console.log('Clicado no botão Aplicar do calendário');
-          await page.waitForTimeout(1000);
-        } catch (error) {
-          console.log('Erro ao clicar no botão Aplicar do calendário:', error);
-        }
-        
-        // Clicar no botão Filtrar para aplicar o filtro
-        console.log('Clicando no botão Filtrar...');
-        let filtroAplicado = false;
-        
-        try {
-          await page.getByRole('button', { name: 'Filtrar' }).click();
-          console.log('Clicado no botão Filtrar usando getByRole');
-          filtroAplicado = true;
-        } catch (error) {
-          console.log('Erro ao clicar no botão Filtrar usando getByRole:', error);
-        }
-        
-        if (!filtroAplicado) {
-          try {
-            await page.locator('button.btn.btn-primary[title="Aplicar Filtros"]').click();
-            console.log('Clicado no botão Filtrar usando seletor CSS específico');
-            filtroAplicado = true;
-          } catch (error) {
-            console.log('Erro ao clicar no botão Filtrar usando seletor CSS específico:', error);
-          }
-        }
-        
-        if (!filtroAplicado) {
-          try {
-            await page.locator('button:has-text("Filtrar")').click();
-            console.log('Clicado no botão Filtrar usando seletor de texto');
-            filtroAplicado = true;
-          } catch (error) {
-            console.log('Erro ao clicar no botão Filtrar usando seletor de texto:', error);
-          }
-        }
-        
-        if (!filtroAplicado) {
-          try {
-            await page.evaluate(() => {
-              const botoes = Array.from(document.querySelectorAll('button'));
-              const botaoFiltrar = botoes.find(b => 
-                b.textContent?.includes('Filtrar') || 
-                b.getAttribute('title')?.includes('Aplicar Filtros')
-              );
-              if (botaoFiltrar) {
-                console.log('Botão encontrado via JS:', botaoFiltrar.textContent, botaoFiltrar.getAttribute('title'));
-                botaoFiltrar.click();
-                return true;
-              }
-              return false;
-            });
-            console.log('Tentativa de clicar no botão Filtrar por JavaScript');
-            filtroAplicado = true;
-          } catch (error) {
-            console.log('Erro ao clicar no botão Filtrar por JavaScript:', error);
-          }
-        }
-        
-        // Aguardar o carregamento da tabela com tempo maior
-        console.log('Aguardando o carregamento da tabela...');
-        await page.waitForTimeout(5000);
-        
-        // Verificar se a tabela foi carregada
-        const tabelaVisivel = await page.evaluate(() => {
-          const tabela = document.querySelector('#grid_RelatorioAnimais');
-          if (tabela) {
-            return true;
-          }
-          
-          // Verificar outras tabelas que possam conter os dados
-          const todasTabelas = document.querySelectorAll('table');
-          return todasTabelas.length > 0;
-        });
-        
-        console.log('Tabela visível:', tabelaVisivel);
-        
-        // Se a tabela não estiver visível, tentar clicar novamente
-        if (!tabelaVisivel) {
-          console.log('Tabela não carregada, tentando clicar novamente no botão Filtrar...');
-          try {
-            // Tentar todas as estratégias novamente
-            await page.getByRole('button', { name: 'Filtrar' }).click();
-            await page.waitForTimeout(5000);
-          } catch (error) {
-            console.log('Erro ao clicar novamente no botão Filtrar:', error);
-          }
-        }
-      } catch (error) {
-        console.log(`Erro ao tentar ajustar o ano: ${error}`);
-      }
-      
-    } catch (error) {
-      console.error('Erro ao selecionar datas:', error);
-      return res.status(500).json({ success: false, error: error.message });
-    }
-    
-    // Aguardar carregamento da tabela
-    console.log('Aguardando tabela carregar...');
-    try {
-      await page.waitForSelector('#grid_RelatorioAnimais', { timeout: 30000 });
-    } catch (error) {
-      console.log('Timeout ao esperar pela tabela. Continuando mesmo assim:', error);
-    }
-    
-    await page.waitForTimeout(2000);
-    
-    // Extrair dados
-    console.log('Extraindo dados da tabela...');
+    // Extrair dados da tabela de animais
+    console.log('Extraindo dados de animais...');
     const animais: Animal[] = await page.evaluate(() => {
       const dados: any[] = [];
       
       // Tentar encontrar a tabela pelo ID
       const tabela = document.querySelector('#grid_RelatorioAnimais');
-      console.log('Tabela encontrada:', !!tabela);
+      console.log('Buscando tabela de animais...');
       
       if (!tabela) {
         console.log('Tabela não encontrada pelo ID, tentando outros seletores...');
@@ -384,7 +80,7 @@ router.get('/ano/:ano', async (req, res) => {
         const todasTabelas = document.querySelectorAll('table');
         console.log('Total de tabelas na página:', todasTabelas.length);
         
-        // Converter NodeList para Array para iterar
+        // Converter NodeList para Array para poder usar o filter
         const tabelasArray = Array.from(todasTabelas);
         
         for (const tabela of tabelasArray) {
@@ -398,100 +94,33 @@ router.get('/ano/:ano', async (req, res) => {
             // Vamos logar o conteúdo das colunas para debug
             const conteudoColunas = [];
             for (let i = 0; i < colunas.length; i++) {
-              conteudoColunas.push(`Coluna ${i}: ${colunas[i].textContent?.trim()}`);
+              conteudoColunas.push(colunas[i].textContent?.trim());
             }
-            console.log('Conteúdo das colunas:', conteudoColunas);
+            console.log('Conteúdo das colunas:', conteudoColunas.join(' | '));
             
             if (colunas.length >= 8) {
               // Extrair dados da tabela
               const animalLink = colunas[1].querySelector('a');
               let codigoAnimal = "";
               let nomeAnimal = "";
-              let dataObito = null;
-              let codigoInternacao = null;
-              
-              // Tentar extrair data de óbito e código de internação do botão WhatsApp
-              const botaoWhatsapp = colunas[9]?.querySelector('button.btn-whatsapp');
-              if (botaoWhatsapp) {
-                const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
-                console.log('Onclick do botão WhatsApp:', onclickAttr);
-                
-                // Verificar diretamente se contém informações de óbito
-                if (onclickAttr.includes('dat_obito')) {
-                  console.log('Atributo onclick contém informações de óbito');
-                  
-                  // Extrair data de óbito diretamente com regex
-                  const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\'([^']+)\\'/);
-                  if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
-                    dataObito = dataObitoMatch[1];
-                    console.log('Data de óbito extraída com regex:', dataObito);
-                  }
-                  
-                  // Tentar extrair data de óbito formatada
-                  const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\'([^']+)\\'/);
-                  if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
-                    dataObito = dataObitoFMatch[1];
-                    console.log('Data de óbito formatada extraída com regex:', dataObito);
-                  }
-                }
-                
-                // Verificar diretamente se contém informações de internação
-                if (onclickAttr.includes('cod_internacao')) {
-                  console.log('Atributo onclick contém informações de internação');
-                  
-                  // Extrair código de internação diretamente com regex
-                  const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\'([^']+)\\'/);
-                  if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
-                    codigoInternacao = codInternacaoMatch[1];
-                    console.log('Código de internação extraído com regex:', codigoInternacao);
-                  }
-                }
-                
-                // Tentar extrair o código do animal se ainda não tiver
-                if (!codigoAnimal && onclickAttr.includes('cod_animal')) {
-                  const codAnimalMatch = onclickAttr.match(/cod_animal\\':\\'([^']+)\\'/);
-                  if (codAnimalMatch && codAnimalMatch[1]) {
-                    codigoAnimal = codAnimalMatch[1];
-                    console.log('Código do animal extraído com regex:', codigoAnimal);
-                  }
-                }
-                
-                // Método alternativo: tentar extrair o JSON completo
-                try {
-                  const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
-                  if (jsonMatch && jsonMatch[1]) {
-                    // Tentar extrair os dados diretamente do texto JSON sem fazer parse
-                    console.log('Texto JSON encontrado:', jsonMatch[1]);
-                    
-                    // Se ainda não tiver encontrado a data de óbito, tentar novamente
-                    if (!dataObito && jsonMatch[1].includes('dat_obito')) {
-                      const match = jsonMatch[1].match(/dat_obito_f\':\\'([^']+)\\'/);
-                      if (match && match[1] && match[1] !== 'null') {
-                        dataObito = match[1];
-                        console.log('Data de óbito extraída do texto JSON:', dataObito);
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.log('Erro ao processar o texto JSON:', e);
-                }
-              }
               
               if (animalLink) {
-                const href = animalLink.getAttribute('href') || '';
+                nomeAnimal = animalLink.textContent?.trim() || "";
+                
+                // Extrair o código do animal do link
+                const href = animalLink.getAttribute('href') || "";
                 const match = href.match(/cod_animal=(\d+)/);
                 if (match && match[1]) {
                   codigoAnimal = match[1];
                 }
-                nomeAnimal = animalLink.textContent?.trim() || '';
               } else {
-                nomeAnimal = colunas[1].textContent?.trim() || '';
+                nomeAnimal = colunas[1].textContent?.trim() || "";
               }
               
-              // Extrair espécie e raça (separar por /)
-              const especieRaca = colunas[2].textContent?.trim() || '';
-              let especie = '';
-              let raca = '';
+              // Extrair espécie e raça
+              let especie = "";
+              let raca = "";
+              const especieRaca = colunas[2].textContent?.trim() || "";
               
               if (especieRaca.includes('/')) {
                 const partes = especieRaca.split('/');
@@ -501,10 +130,17 @@ router.get('/ano/:ano', async (req, res) => {
                 especie = especieRaca;
               }
               
-              // Extrair sexo, idade e data de cadastro
-              const sexo = colunas[3].textContent?.trim() || '';
-              const idade = colunas[4].textContent?.trim() || '';
-              const dataCadastro = colunas[5].textContent?.trim() || '';
+              // Extrair sexo
+              const sexo = colunas[3].textContent?.trim() || "";
+              
+              // Extrair data de nascimento
+              const dataNascimento = colunas[4].textContent?.trim() || "";
+              
+              // Extrair data de cadastro
+              const dataCadastro = colunas[5].textContent?.trim() || "";
+              
+              // Extrair data de óbito
+              const dataObito = colunas[6].textContent?.trim() || null;
               
               // Extrair o código do tutor do link
               const tutorLink = colunas[7].querySelector('a');
@@ -512,28 +148,31 @@ router.get('/ano/:ano', async (req, res) => {
               let nomeTutor = "";
               
               if (tutorLink) {
-                const href = tutorLink.getAttribute('href') || '';
+                nomeTutor = tutorLink.textContent?.trim() || "";
+                
+                // Extrair o código do tutor do link
+                const href = tutorLink.getAttribute('href') || "";
                 const match = href.match(/cod_cliente=(\d+)/);
                 if (match && match[1]) {
                   codigoTutor = match[1];
                 }
-                nomeTutor = tutorLink.textContent?.trim() || '';
               } else {
-                nomeTutor = colunas[7].textContent?.trim() || '';
+                nomeTutor = colunas[7].textContent?.trim() || "";
               }
               
+              // Adicionar dados ao array
               dados.push({
                 codigo: codigoAnimal,
                 nome: nomeAnimal,
                 especie: especie,
                 raca: raca,
                 sexo: sexo,
-                data_nascimento: idade,
+                data_nascimento: dataNascimento,
                 data_cadastro: dataCadastro,
                 data_obito: dataObito,
                 tutor_codigo: codigoTutor,
                 tutor_nome: nomeTutor,
-                codigo_internacao: codigoInternacao
+                codigo_internacao: null
               });
             }
           }
@@ -552,9 +191,9 @@ router.get('/ano/:ano', async (req, res) => {
         // Vamos logar o conteúdo das colunas para debug
         const conteudoColunas = [];
         for (let i = 0; i < colunas.length; i++) {
-          conteudoColunas.push(`Coluna ${i}: ${colunas[i].textContent?.trim()}`);
+          conteudoColunas.push(colunas[i].textContent?.trim());
         }
-        console.log('Conteúdo das colunas:', conteudoColunas);
+        console.log('Conteúdo das colunas:', conteudoColunas.join(' | '));
         
         if (colunas.length >= 8) {
           // Extrair dados da tabela
@@ -562,90 +201,24 @@ router.get('/ano/:ano', async (req, res) => {
           let codigoAnimal = "";
           let nomeAnimal = "";
           let dataObito = null;
-          let codigoInternacao = null;
-          
-          // Tentar extrair data de óbito e código de internação do botão WhatsApp
-          const botaoWhatsapp = colunas[9]?.querySelector('button.btn-whatsapp');
-          if (botaoWhatsapp) {
-            const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
-            console.log('Onclick do botão WhatsApp:', onclickAttr);
-            
-            // Verificar diretamente se contém informações de óbito
-            if (onclickAttr.includes('dat_obito')) {
-              console.log('Atributo onclick contém informações de óbito');
-              
-              // Extrair data de óbito diretamente com regex
-              const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\'([^']+)\\'/);
-              if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
-                dataObito = dataObitoMatch[1];
-                console.log('Data de óbito extraída com regex:', dataObito);
-              }
-              
-              // Tentar extrair data de óbito formatada
-              const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\'([^']+)\\'/);
-              if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
-                dataObito = dataObitoFMatch[1];
-                console.log('Data de óbito formatada extraída com regex:', dataObito);
-              }
-            }
-            
-            // Verificar diretamente se contém informações de internação
-            if (onclickAttr.includes('cod_internacao')) {
-              console.log('Atributo onclick contém informações de internação');
-              
-              // Extrair código de internação diretamente com regex
-              const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\'([^']+)\\'/);
-              if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
-                codigoInternacao = codInternacaoMatch[1];
-                console.log('Código de internação extraído com regex:', codigoInternacao);
-              }
-            }
-            
-            // Tentar extrair o código do animal se ainda não tiver
-            if (!codigoAnimal && onclickAttr.includes('cod_animal')) {
-              const codAnimalMatch = onclickAttr.match(/cod_animal\\':\\'([^']+)\\'/);
-              if (codAnimalMatch && codAnimalMatch[1]) {
-                codigoAnimal = codAnimalMatch[1];
-                console.log('Código do animal extraído com regex:', codigoAnimal);
-              }
-            }
-            
-            // Método alternativo: tentar extrair o JSON completo
-            try {
-              const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
-              if (jsonMatch && jsonMatch[1]) {
-                // Tentar extrair os dados diretamente do texto JSON sem fazer parse
-                console.log('Texto JSON encontrado:', jsonMatch[1]);
-                
-                // Se ainda não tiver encontrado a data de óbito, tentar novamente
-                if (!dataObito && jsonMatch[1].includes('dat_obito')) {
-                  const match = jsonMatch[1].match(/dat_obito_f\':\\'([^']+)\\'/);
-                  if (match && match[1] && match[1] !== 'null') {
-                    dataObito = match[1];
-                    console.log('Data de óbito extraída do texto JSON:', dataObito);
-                  }
-                }
-              }
-            } catch (e) {
-              console.log('Erro ao processar o texto JSON:', e);
-            }
-          }
           
           if (animalLink) {
-            const href = animalLink.getAttribute('href') || '';
+            nomeAnimal = animalLink.textContent?.trim() || "";
+            
+            // Extrair o código do animal do link
+            const href = animalLink.getAttribute('href') || "";
             const match = href.match(/cod_animal=(\d+)/);
             if (match && match[1]) {
               codigoAnimal = match[1];
             }
-            nomeAnimal = animalLink.textContent?.trim() || '';
           } else {
-            nomeAnimal = colunas[1].textContent?.trim() || '';
+            nomeAnimal = colunas[1].textContent?.trim() || "";
           }
           
-          // Extrair espécie e raça (separar por /)
-          const especieRaca = colunas[2].textContent?.trim() || '';
-          let especie = '';
-          let raca = '';
+          // Extrair espécie e raça
+          let especie = "";
+          let raca = "";
+          const especieRaca = colunas[2].textContent?.trim() || "";
           
           if (especieRaca.includes('/')) {
             const partes = especieRaca.split('/');
@@ -655,10 +228,17 @@ router.get('/ano/:ano', async (req, res) => {
             especie = especieRaca;
           }
           
-          // Extrair sexo, idade e data de cadastro
-          const sexo = colunas[3].textContent?.trim() || '';
-          const idade = colunas[4].textContent?.trim() || '';
-          const dataCadastro = colunas[5].textContent?.trim() || '';
+          // Extrair sexo
+          const sexo = colunas[3].textContent?.trim() || "";
+          
+          // Extrair data de nascimento
+          const dataNascimento = colunas[4].textContent?.trim() || "";
+          
+          // Extrair data de cadastro
+          const dataCadastro = colunas[5].textContent?.trim() || "";
+          
+          // Extrair data de óbito
+          dataObito = colunas[6].textContent?.trim() || null;
           
           // Extrair o código do tutor do link
           const tutorLink = colunas[7].querySelector('a');
@@ -666,28 +246,31 @@ router.get('/ano/:ano', async (req, res) => {
           let nomeTutor = "";
           
           if (tutorLink) {
-            const href = tutorLink.getAttribute('href') || '';
+            nomeTutor = tutorLink.textContent?.trim() || "";
+            
+            // Extrair o código do tutor do link
+            const href = tutorLink.getAttribute('href') || "";
             const match = href.match(/cod_cliente=(\d+)/);
             if (match && match[1]) {
               codigoTutor = match[1];
             }
-            nomeTutor = tutorLink.textContent?.trim() || '';
           } else {
-            nomeTutor = colunas[7].textContent?.trim() || '';
+            nomeTutor = colunas[7].textContent?.trim() || "";
           }
           
+          // Adicionar dados ao array
           dados.push({
             codigo: codigoAnimal,
             nome: nomeAnimal,
             especie: especie,
             raca: raca,
             sexo: sexo,
-            data_nascimento: idade,
+            data_nascimento: dataNascimento,
             data_cadastro: dataCadastro,
             data_obito: dataObito,
             tutor_codigo: codigoTutor,
             tutor_nome: nomeTutor,
-            codigo_internacao: codigoInternacao
+            codigo_internacao: null
           });
         }
       }
@@ -696,17 +279,18 @@ router.get('/ano/:ano', async (req, res) => {
     });
     console.log(`Extraídos ${animais.length} animais`);
     
-    await browser.close();
-    
-    // Retornar os dados formatados
     return res.json({
-      total: animais.length,
-      periodo: `01/01/${ano} a 31/12/${ano}`,
-      animais: animais
+      success: true,
+      data: animais,
+      total: animais.length
     });
     
   } catch (error: any) {
     console.error('Erro durante a extração:', error);
+    
+    // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
+    await resetSession();
+    
     return res.status(500).json({
       success: false,
       error: error.message || 'Erro desconhecido'
@@ -721,320 +305,24 @@ router.get('/exportar/:ano', async (req, res) => {
     
     console.log(`Exportando animais do ano ${ano} para Excel`);
     
-    // Buscar os dados dos animais
-    const browser = await chromium.launch({
-      headless: false
-    });
+    // Usar o modo headless com base no parâmetro da query
+    const showBrowser = req.query.show === 'true';
+    const headless = !showBrowser;
     
-    const context = await browser.newContext();
-    const page = await context.newPage();
+    // Verificar se deve forçar a atualização da página
+    const forceRefresh = req.query.refresh === 'true';
     
-    console.log('Iniciando navegação...');
-    await page.goto('https://dranimal.vetsoft.com.br/', {
-      timeout: 60000,
-      waitUntil: 'domcontentloaded'
-    });
+    // Navegar para a página de relatórios de animais com o ano especificado
+    const page = await navigateToRelatorioAnimais(headless, forceRefresh, ano);
     
-    await page.waitForTimeout(2000);
-    
-    console.log('Página carregada, realizando login...');
-    await page.getByRole('textbox', { name: 'Usuário *' }).fill(config.vetsoft.username!);
-    await page.getByRole('textbox', { name: 'Senha * ' }).fill(config.vetsoft.password!);
-    await page.getByRole('textbox', { name: 'Senha * ' }).press('Enter');
-    
-    console.log('Login realizado, acessando Relatórios...');
-    await page.waitForTimeout(3000);
-    await page.getByRole('link', { name: ' Relatórios' }).click();
-    
-    console.log('Acessando relatório de animais...');
-    await page.waitForTimeout(2000);
-    await page.getByRole('link', { name: 'Animais' }).click();
-    
-    // Implementar a lógica de extração dos animais
-    try {
-      // Abrir o selecionador de datas
-      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-      await page.waitForTimeout(1000);
-      
-      try {
-        // Vamos obter o mês e ano atuais para calcular quantos meses precisamos navegar
-        const mesAnoAtual = await page.locator('.drp-calendar.left .month').textContent();
-        console.log(`Mês e ano atuais: ${mesAnoAtual}`);
-        
-        // Navegar até janeiro do ano desejado
-        // Primeiro, vamos identificar o mês e ano atual
-        const mesAtual = await page.evaluate(() => {
-          const mesTexto = document.querySelector('.drp-calendar.left .month')?.textContent || '';
-          // Extrair mês e ano do texto (formato: "mmm YYYY", ex: "abr 2025")
-          const partes = mesTexto.split(' ');
-          const mes = partes[0];
-          const ano = partes.length > 1 ? parseInt(partes[1]) : new Date().getFullYear();
-          
-          // Mapear nome do mês para número
-          const meses: Record<string, number> = {
-            'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-            'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12
-          };
-          
-          return {
-            mes: meses[mes.toLowerCase()] || 1,
-            ano: ano
-          };
-        });
-        
-        console.log(`Mês atual: ${mesAtual.mes}, Ano atual: ${mesAtual.ano}`);
-        
-        // Calcular quantos meses precisamos navegar
-        const anoDesejado = parseInt(ano); // Usar o ano passado como parâmetro
-        
-        // Verificar se precisamos ir para frente ou para trás
-        if (mesAtual.ano > anoDesejado) {
-          // Precisamos voltar
-          const mesesParaVoltar = (mesAtual.ano - anoDesejado) * 12 + mesAtual.mes - 1; // -1 para ir para janeiro
-          console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
-          
-          // Voltar para janeiro do ano desejado
-          console.log(`Tentando voltar para janeiro de ${anoDesejado} clicando na seta esquerda...`);
-          
-          for (let i = 0; i < mesesParaVoltar; i++) {
-            await page.locator('.drp-calendar.left .prev.available').click();
-            await page.waitForTimeout(200);
-            
-            // A cada 5 cliques, verificamos o mês atual
-            if (i % 5 === 0 || i === mesesParaVoltar - 1) {
-              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
-              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
-              
-              // Se chegamos em janeiro do ano desejado, podemos parar
-              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
-                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
-                break;
-              }
-            }
-          }
-        } else if (mesAtual.ano < anoDesejado) {
-          // Precisamos avançar
-          const mesesParaAvancar = (anoDesejado - mesAtual.ano) * 12 - mesAtual.mes + 1; // +1 para ir para janeiro
-          console.log(`Precisamos avançar ${mesesParaAvancar} meses para chegar em janeiro de ${anoDesejado}`);
-          
-          // Avançar para janeiro do ano desejado
-          console.log(`Tentando avançar para janeiro de ${anoDesejado} clicando na seta direita...`);
-          
-          for (let i = 0; i < mesesParaAvancar; i++) {
-            await page.locator('.drp-calendar.left .next.available').click();
-            await page.waitForTimeout(200);
-            
-            // A cada 5 cliques, verificamos o mês atual
-            if (i % 5 === 0 || i === mesesParaAvancar - 1) {
-              const mesAtualEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
-              console.log(`Mês atual após ${i+1} cliques: ${mesAtualEsquerdo}`);
-              
-              // Se chegamos em janeiro do ano desejado, podemos parar
-              if (mesAtualEsquerdo && mesAtualEsquerdo.toLowerCase().includes(`jan ${anoDesejado}`)) {
-                console.log(`Chegamos em janeiro de ${anoDesejado}, parando a navegação`);
-                break;
-              }
-            }
-          }
-        } else {
-          // Estamos no mesmo ano, precisamos apenas ajustar o mês
-          if (mesAtual.mes > 1) {
-            // Voltar para janeiro
-            const mesesParaVoltar = mesAtual.mes - 1;
-            console.log(`Precisamos voltar ${mesesParaVoltar} meses para chegar em janeiro de ${anoDesejado}`);
-            
-            for (let i = 0; i < mesesParaVoltar; i++) {
-              await page.locator('.drp-calendar.left .prev.available').click();
-              await page.waitForTimeout(200);
-            }
-          }
-        }
-        
-        // Verificar se estamos em janeiro do ano desejado
-        const mesJaneiro = await page.locator('.drp-calendar.left .month').textContent();
-        console.log(`Mês atual: ${mesJaneiro}`);
-        
-        // Agora vamos clicar no dia 1 de janeiro do ano desejado
-        console.log(`Clicando no dia 1 de janeiro de ${anoDesejado}...`);
-        
-        try {
-          // Tentar clicar no dia 1
-          await page.locator('.drp-calendar.left td.available').filter({ hasText: '1' }).first().click();
-          console.log('Clicado no dia 1 de janeiro');
-        } catch (error) {
-          console.log('Erro ao clicar no dia 1, tentando outro dia disponível...');
-          try {
-            await page.locator('.drp-calendar.left td.available').first().click();
-            console.log('Clicado em um dia disponível de janeiro');
-          } catch (error) {
-            console.log('Erro ao clicar em um dia disponível, tentando qualquer dia...');
-            await page.locator('.drp-calendar.left td').first().click();
-          }
-        }
-        
-        await page.waitForTimeout(500);
-        
-        // Agora vamos navegar para dezembro do ano desejado
-        console.log(`Navegando para dezembro de ${anoDesejado}...`);
-        
-        // São 11 meses para frente (de janeiro a dezembro)
-        for (let i = 0; i < 11; i++) {
-          await page.locator('.drp-calendar.right .next.available').click();
-          await page.waitForTimeout(300);
-          
-          // A cada 3 cliques, verificamos o mês atual
-          if (i % 3 === 0 || i === 10) {
-            const mesAtualDireito = await page.locator('.drp-calendar.right .month').textContent();
-            console.log(`Mês direito após ${i+1} cliques: ${mesAtualDireito}`);
-            
-            // Se chegamos em dezembro do ano desejado, podemos parar
-            if (mesAtualDireito && mesAtualDireito.includes('Dez')) {
-              console.log(`Chegamos em dezembro de ${anoDesejado}`);
-              break;
-            }
-          }
-        }
-        
-        // Agora vamos clicar no último dia de dezembro
-        console.log(`Clicando no último dia de dezembro de ${anoDesejado}...`);
-        
-        try {
-          // Tentar clicar no dia 31
-          await page.locator('.drp-calendar.right td.available').filter({ hasText: '31' }).first().click();
-          console.log('Clicado no dia 31 de dezembro');
-        } catch (error) {
-          console.log('Erro ao clicar no dia 31, tentando dia 30...');
-          try {
-            await page.locator('.drp-calendar.right td.available').filter({ hasText: '30' }).first().click();
-            console.log('Clicado no dia 30 de dezembro');
-          } catch (error) {
-            console.log('Erro ao clicar no dia 30, tentando qualquer dia disponível...');
-            await page.locator('.drp-calendar.right td.available').last().click();
-          }
-        }
-        
-        await page.waitForTimeout(1000);
-        
-        // Clicar no botão Aplicar para fechar o calendário
-        try {
-          await page.locator('.applyBtn').click();
-          console.log('Clicado no botão Aplicar do calendário');
-          await page.waitForTimeout(1000);
-        } catch (error) {
-          console.log('Erro ao clicar no botão Aplicar do calendário:', error);
-        }
-        
-        // Clicar no botão Filtrar para aplicar o filtro
-        console.log('Clicando no botão Filtrar...');
-        let filtroAplicado = false;
-        
-        try {
-          await page.getByRole('button', { name: 'Filtrar' }).click();
-          console.log('Clicado no botão Filtrar usando getByRole');
-          filtroAplicado = true;
-        } catch (error) {
-          console.log('Erro ao clicar no botão Filtrar usando getByRole:', error);
-        }
-        
-        if (!filtroAplicado) {
-          try {
-            await page.locator('button.btn.btn-primary[title="Aplicar Filtros"]').click();
-            console.log('Clicado no botão Filtrar usando seletor CSS específico');
-            filtroAplicado = true;
-          } catch (error) {
-            console.log('Erro ao clicar no botão Filtrar usando seletor CSS específico:', error);
-          }
-        }
-        
-        if (!filtroAplicado) {
-          try {
-            await page.locator('button:has-text("Filtrar")').click();
-            console.log('Clicado no botão Filtrar usando seletor de texto');
-            filtroAplicado = true;
-          } catch (error) {
-            console.log('Erro ao clicar no botão Filtrar usando seletor de texto:', error);
-          }
-        }
-        
-        if (!filtroAplicado) {
-          try {
-            await page.evaluate(() => {
-              const botoes = Array.from(document.querySelectorAll('button'));
-              const botaoFiltrar = botoes.find(b => 
-                b.textContent?.includes('Filtrar') || 
-                b.getAttribute('title')?.includes('Aplicar Filtros')
-              );
-              if (botaoFiltrar) {
-                console.log('Botão encontrado via JS:', botaoFiltrar.textContent, botaoFiltrar.getAttribute('title'));
-                botaoFiltrar.click();
-                return true;
-              }
-              return false;
-            });
-            console.log('Tentativa de clicar no botão Filtrar por JavaScript');
-            filtroAplicado = true;
-          } catch (error) {
-            console.log('Erro ao clicar no botão Filtrar por JavaScript:', error);
-          }
-        }
-        
-        // Aguardar o carregamento da tabela com tempo maior
-        console.log('Aguardando o carregamento da tabela...');
-        await page.waitForTimeout(5000);
-        
-        // Verificar se a tabela foi carregada
-        const tabelaVisivel = await page.evaluate(() => {
-          const tabela = document.querySelector('#grid_RelatorioAnimais');
-          if (tabela) {
-            return true;
-          }
-          
-          // Verificar outras tabelas que possam conter os dados
-          const todasTabelas = document.querySelectorAll('table');
-          return todasTabelas.length > 0;
-        });
-        
-        console.log('Tabela visível:', tabelaVisivel);
-        
-        // Se a tabela não estiver visível, tentar clicar novamente
-        if (!tabelaVisivel) {
-          console.log('Tabela não carregada, tentando clicar novamente no botão Filtrar...');
-          try {
-            // Tentar todas as estratégias novamente
-            await page.getByRole('button', { name: 'Filtrar' }).click();
-            await page.waitForTimeout(5000);
-          } catch (error) {
-            console.log('Erro ao clicar novamente no botão Filtrar:', error);
-          }
-        }
-      } catch (error) {
-        console.log(`Erro ao tentar ajustar o ano: ${error}`);
-      }
-      
-    } catch (error) {
-      console.error('Erro ao selecionar datas:', error);
-      await browser.close();
-      return res.status(500).json({ success: false, error: error.message });
-    }
-    
-    // Aguardar carregamento da tabela
-    console.log('Aguardando tabela carregar...');
-    try {
-      await page.waitForSelector('#grid_RelatorioAnimais', { timeout: 30000 });
-    } catch (error) {
-      console.log('Timeout ao esperar pela tabela. Continuando mesmo assim:', error);
-    }
-    
-    await page.waitForTimeout(2000);
-    
-    // Extrair dados
-    console.log('Extraindo dados da tabela...');
+    // Extrair dados da tabela de animais (mesmo código da rota anterior)
+    console.log('Extraindo dados de animais para Excel...');
     const animais: Animal[] = await page.evaluate(() => {
       const dados: any[] = [];
       
       // Tentar encontrar a tabela pelo ID
       const tabela = document.querySelector('#grid_RelatorioAnimais');
-      console.log('Tabela encontrada:', !!tabela);
+      console.log('Buscando tabela de animais...');
       
       if (!tabela) {
         console.log('Tabela não encontrada pelo ID, tentando outros seletores...');
@@ -1042,7 +330,7 @@ router.get('/exportar/:ano', async (req, res) => {
         const todasTabelas = document.querySelectorAll('table');
         console.log('Total de tabelas na página:', todasTabelas.length);
         
-        // Converter NodeList para Array para iterar
+        // Converter NodeList para Array para poder usar o filter
         const tabelasArray = Array.from(todasTabelas);
         
         for (const tabela of tabelasArray) {
@@ -1056,100 +344,33 @@ router.get('/exportar/:ano', async (req, res) => {
             // Vamos logar o conteúdo das colunas para debug
             const conteudoColunas = [];
             for (let i = 0; i < colunas.length; i++) {
-              conteudoColunas.push(`Coluna ${i}: ${colunas[i].textContent?.trim()}`);
+              conteudoColunas.push(colunas[i].textContent?.trim());
             }
-            console.log('Conteúdo das colunas:', conteudoColunas);
+            console.log('Conteúdo das colunas:', conteudoColunas.join(' | '));
             
             if (colunas.length >= 8) {
               // Extrair dados da tabela
               const animalLink = colunas[1].querySelector('a');
               let codigoAnimal = "";
               let nomeAnimal = "";
-              let dataObito = null;
-              let codigoInternacao = null;
-              
-              // Tentar extrair data de óbito e código de internação do botão WhatsApp
-              const botaoWhatsapp = colunas[9]?.querySelector('button.btn-whatsapp');
-              if (botaoWhatsapp) {
-                const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
-                console.log('Onclick do botão WhatsApp:', onclickAttr);
-                
-                // Verificar diretamente se contém informações de óbito
-                if (onclickAttr.includes('dat_obito')) {
-                  console.log('Atributo onclick contém informações de óbito');
-                  
-                  // Extrair data de óbito diretamente com regex
-                  const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\'([^']+)\\'/);
-                  if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
-                    dataObito = dataObitoMatch[1];
-                    console.log('Data de óbito extraída com regex:', dataObito);
-                  }
-                  
-                  // Tentar extrair data de óbito formatada
-                  const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\'([^']+)\\'/);
-                  if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
-                    dataObito = dataObitoFMatch[1];
-                    console.log('Data de óbito formatada extraída com regex:', dataObito);
-                  }
-                }
-                
-                // Verificar diretamente se contém informações de internação
-                if (onclickAttr.includes('cod_internacao')) {
-                  console.log('Atributo onclick contém informações de internação');
-                  
-                  // Extrair código de internação diretamente com regex
-                  const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\'([^']+)\\'/);
-                  if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
-                    codigoInternacao = codInternacaoMatch[1];
-                    console.log('Código de internação extraído com regex:', codigoInternacao);
-                  }
-                }
-                
-                // Tentar extrair o código do animal se ainda não tiver
-                if (!codigoAnimal && onclickAttr.includes('cod_animal')) {
-                  const codAnimalMatch = onclickAttr.match(/cod_animal\\':\\'([^']+)\\'/);
-                  if (codAnimalMatch && codAnimalMatch[1]) {
-                    codigoAnimal = codAnimalMatch[1];
-                    console.log('Código do animal extraído com regex:', codigoAnimal);
-                  }
-                }
-                
-                // Método alternativo: tentar extrair o JSON completo
-                try {
-                  const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
-                  if (jsonMatch && jsonMatch[1]) {
-                    // Tentar extrair os dados diretamente do texto JSON sem fazer parse
-                    console.log('Texto JSON encontrado:', jsonMatch[1]);
-                    
-                    // Se ainda não tiver encontrado a data de óbito, tentar novamente
-                    if (!dataObito && jsonMatch[1].includes('dat_obito')) {
-                      const match = jsonMatch[1].match(/dat_obito_f\':\\'([^']+)\\'/);
-                      if (match && match[1] && match[1] !== 'null') {
-                        dataObito = match[1];
-                        console.log('Data de óbito extraída do texto JSON:', dataObito);
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.log('Erro ao processar o texto JSON:', e);
-                }
-              }
               
               if (animalLink) {
-                const href = animalLink.getAttribute('href') || '';
+                nomeAnimal = animalLink.textContent?.trim() || "";
+                
+                // Extrair o código do animal do link
+                const href = animalLink.getAttribute('href') || "";
                 const match = href.match(/cod_animal=(\d+)/);
                 if (match && match[1]) {
                   codigoAnimal = match[1];
                 }
-                nomeAnimal = animalLink.textContent?.trim() || '';
               } else {
-                nomeAnimal = colunas[1].textContent?.trim() || '';
+                nomeAnimal = colunas[1].textContent?.trim() || "";
               }
               
-              // Extrair espécie e raça (separar por /)
-              const especieRaca = colunas[2].textContent?.trim() || '';
-              let especie = '';
-              let raca = '';
+              // Extrair espécie e raça
+              let especie = "";
+              let raca = "";
+              const especieRaca = colunas[2].textContent?.trim() || "";
               
               if (especieRaca.includes('/')) {
                 const partes = especieRaca.split('/');
@@ -1159,10 +380,17 @@ router.get('/exportar/:ano', async (req, res) => {
                 especie = especieRaca;
               }
               
-              // Extrair sexo, idade e data de cadastro
-              const sexo = colunas[3].textContent?.trim() || '';
-              const idade = colunas[4].textContent?.trim() || '';
-              const dataCadastro = colunas[5].textContent?.trim() || '';
+              // Extrair sexo
+              const sexo = colunas[3].textContent?.trim() || "";
+              
+              // Extrair data de nascimento
+              const dataNascimento = colunas[4].textContent?.trim() || "";
+              
+              // Extrair data de cadastro
+              const dataCadastro = colunas[5].textContent?.trim() || "";
+              
+              // Extrair data de óbito
+              const dataObito = colunas[6].textContent?.trim() || null;
               
               // Extrair o código do tutor do link
               const tutorLink = colunas[7].querySelector('a');
@@ -1170,28 +398,31 @@ router.get('/exportar/:ano', async (req, res) => {
               let nomeTutor = "";
               
               if (tutorLink) {
-                const href = tutorLink.getAttribute('href') || '';
+                nomeTutor = tutorLink.textContent?.trim() || "";
+                
+                // Extrair o código do tutor do link
+                const href = tutorLink.getAttribute('href') || "";
                 const match = href.match(/cod_cliente=(\d+)/);
                 if (match && match[1]) {
                   codigoTutor = match[1];
                 }
-                nomeTutor = tutorLink.textContent?.trim() || '';
               } else {
-                nomeTutor = colunas[7].textContent?.trim() || '';
+                nomeTutor = colunas[7].textContent?.trim() || "";
               }
               
+              // Adicionar dados ao array
               dados.push({
                 codigo: codigoAnimal,
                 nome: nomeAnimal,
                 especie: especie,
                 raca: raca,
                 sexo: sexo,
-                data_nascimento: idade,
+                data_nascimento: dataNascimento,
                 data_cadastro: dataCadastro,
                 data_obito: dataObito,
                 tutor_codigo: codigoTutor,
                 tutor_nome: nomeTutor,
-                codigo_internacao: codigoInternacao
+                codigo_internacao: null
               });
             }
           }
@@ -1210,9 +441,9 @@ router.get('/exportar/:ano', async (req, res) => {
         // Vamos logar o conteúdo das colunas para debug
         const conteudoColunas = [];
         for (let i = 0; i < colunas.length; i++) {
-          conteudoColunas.push(`Coluna ${i}: ${colunas[i].textContent?.trim()}`);
+          conteudoColunas.push(colunas[i].textContent?.trim());
         }
-        console.log('Conteúdo das colunas:', conteudoColunas);
+        console.log('Conteúdo das colunas:', conteudoColunas.join(' | '));
         
         if (colunas.length >= 8) {
           // Extrair dados da tabela
@@ -1220,90 +451,24 @@ router.get('/exportar/:ano', async (req, res) => {
           let codigoAnimal = "";
           let nomeAnimal = "";
           let dataObito = null;
-          let codigoInternacao = null;
-          
-          // Tentar extrair data de óbito e código de internação do botão WhatsApp
-          const botaoWhatsapp = colunas[9]?.querySelector('button.btn-whatsapp');
-          if (botaoWhatsapp) {
-            const onclickAttr = botaoWhatsapp.getAttribute('onclick') || '';
-            console.log('Onclick do botão WhatsApp:', onclickAttr);
-            
-            // Verificar diretamente se contém informações de óbito
-            if (onclickAttr.includes('dat_obito')) {
-              console.log('Atributo onclick contém informações de óbito');
-              
-              // Extrair data de óbito diretamente com regex
-              const dataObitoMatch = onclickAttr.match(/dat_obito\\':\\'([^']+)\\'/);
-              if (dataObitoMatch && dataObitoMatch[1] && dataObitoMatch[1] !== 'null') {
-                dataObito = dataObitoMatch[1];
-                console.log('Data de óbito extraída com regex:', dataObito);
-              }
-              
-              // Tentar extrair data de óbito formatada
-              const dataObitoFMatch = onclickAttr.match(/dat_obito_f\\':\\'([^']+)\\'/);
-              if (dataObitoFMatch && dataObitoFMatch[1] && dataObitoFMatch[1] !== 'null') {
-                dataObito = dataObitoFMatch[1];
-                console.log('Data de óbito formatada extraída com regex:', dataObito);
-              }
-            }
-            
-            // Verificar diretamente se contém informações de internação
-            if (onclickAttr.includes('cod_internacao')) {
-              console.log('Atributo onclick contém informações de internação');
-              
-              // Extrair código de internação diretamente com regex
-              const codInternacaoMatch = onclickAttr.match(/cod_internacao\\':\\'([^']+)\\'/);
-              if (codInternacaoMatch && codInternacaoMatch[1] && codInternacaoMatch[1] !== 'null') {
-                codigoInternacao = codInternacaoMatch[1];
-                console.log('Código de internação extraído com regex:', codigoInternacao);
-              }
-            }
-            
-            // Tentar extrair o código do animal se ainda não tiver
-            if (!codigoAnimal && onclickAttr.includes('cod_animal')) {
-              const codAnimalMatch = onclickAttr.match(/cod_animal\\':\\'([^']+)\\'/);
-              if (codAnimalMatch && codAnimalMatch[1]) {
-                codigoAnimal = codAnimalMatch[1];
-                console.log('Código do animal extraído com regex:', codigoAnimal);
-              }
-            }
-            
-            // Método alternativo: tentar extrair o JSON completo
-            try {
-              const jsonMatch = onclickAttr.match(/MensagemWhatsapp\.viewMessages\([^,]+,\s*'(.+?)'\)/);
-              if (jsonMatch && jsonMatch[1]) {
-                // Tentar extrair os dados diretamente do texto JSON sem fazer parse
-                console.log('Texto JSON encontrado:', jsonMatch[1]);
-                
-                // Se ainda não tiver encontrado a data de óbito, tentar novamente
-                if (!dataObito && jsonMatch[1].includes('dat_obito')) {
-                  const match = jsonMatch[1].match(/dat_obito_f\':\\'([^']+)\\'/);
-                  if (match && match[1] && match[1] !== 'null') {
-                    dataObito = match[1];
-                    console.log('Data de óbito extraída do texto JSON:', dataObito);
-                  }
-                }
-              }
-            } catch (e) {
-              console.log('Erro ao processar o texto JSON:', e);
-            }
-          }
           
           if (animalLink) {
-            const href = animalLink.getAttribute('href') || '';
+            nomeAnimal = animalLink.textContent?.trim() || "";
+            
+            // Extrair o código do animal do link
+            const href = animalLink.getAttribute('href') || "";
             const match = href.match(/cod_animal=(\d+)/);
             if (match && match[1]) {
               codigoAnimal = match[1];
             }
-            nomeAnimal = animalLink.textContent?.trim() || '';
           } else {
-            nomeAnimal = colunas[1].textContent?.trim() || '';
+            nomeAnimal = colunas[1].textContent?.trim() || "";
           }
           
-          // Extrair espécie e raça (separar por /)
-          const especieRaca = colunas[2].textContent?.trim() || '';
-          let especie = '';
-          let raca = '';
+          // Extrair espécie e raça
+          let especie = "";
+          let raca = "";
+          const especieRaca = colunas[2].textContent?.trim() || "";
           
           if (especieRaca.includes('/')) {
             const partes = especieRaca.split('/');
@@ -1313,10 +478,17 @@ router.get('/exportar/:ano', async (req, res) => {
             especie = especieRaca;
           }
           
-          // Extrair sexo, idade e data de cadastro
-          const sexo = colunas[3].textContent?.trim() || '';
-          const idade = colunas[4].textContent?.trim() || '';
-          const dataCadastro = colunas[5].textContent?.trim() || '';
+          // Extrair sexo
+          const sexo = colunas[3].textContent?.trim() || "";
+          
+          // Extrair data de nascimento
+          const dataNascimento = colunas[4].textContent?.trim() || "";
+          
+          // Extrair data de cadastro
+          const dataCadastro = colunas[5].textContent?.trim() || "";
+          
+          // Extrair data de óbito
+          dataObito = colunas[6].textContent?.trim() || null;
           
           // Extrair o código do tutor do link
           const tutorLink = colunas[7].querySelector('a');
@@ -1324,28 +496,31 @@ router.get('/exportar/:ano', async (req, res) => {
           let nomeTutor = "";
           
           if (tutorLink) {
-            const href = tutorLink.getAttribute('href') || '';
+            nomeTutor = tutorLink.textContent?.trim() || "";
+            
+            // Extrair o código do tutor do link
+            const href = tutorLink.getAttribute('href') || "";
             const match = href.match(/cod_cliente=(\d+)/);
             if (match && match[1]) {
               codigoTutor = match[1];
             }
-            nomeTutor = tutorLink.textContent?.trim() || '';
           } else {
-            nomeTutor = colunas[7].textContent?.trim() || '';
+            nomeTutor = colunas[7].textContent?.trim() || "";
           }
           
+          // Adicionar dados ao array
           dados.push({
             codigo: codigoAnimal,
             nome: nomeAnimal,
             especie: especie,
             raca: raca,
             sexo: sexo,
-            data_nascimento: idade,
+            data_nascimento: dataNascimento,
             data_cadastro: dataCadastro,
             data_obito: dataObito,
             tutor_codigo: codigoTutor,
             tutor_nome: nomeTutor,
-            codigo_internacao: codigoInternacao
+            codigo_internacao: null
           });
         }
       }
@@ -1359,22 +534,39 @@ router.get('/exportar/:ano', async (req, res) => {
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(animais);
     
-    // Adicionar planilha ao workbook
+    // Ajustar largura das colunas
+    const colWidths = [
+      { wch: 10 }, // código
+      { wch: 30 }, // nome
+      { wch: 15 }, // espécie
+      { wch: 15 }, // raça
+      { wch: 10 }, // sexo
+      { wch: 15 }, // data_nascimento
+      { wch: 15 }, // data_cadastro
+      { wch: 15 }, // data_obito
+      { wch: 10 }, // tutor_codigo
+      { wch: 30 }  // tutor_nome
+    ];
+    worksheet['!cols'] = colWidths;
+    
     XLSX.utils.book_append_sheet(workbook, worksheet, `Animais ${ano}`);
     
-    // Configurar cabeçalho para download
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename=animais_${ano}.xlsx`);
-    
-    // Enviar o arquivo Excel
+    // Gerar o arquivo Excel
     const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
-    await browser.close();
+    // Configurar headers para download
+    res.setHeader('Content-Disposition', `attachment; filename="animais-${ano}.xlsx"`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     
-    return res.send(excelBuffer);
+    // Enviar o arquivo
+    return res.send(Buffer.from(excelBuffer));
     
   } catch (error: any) {
     console.error('Erro durante a exportação:', error);
+    
+    // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
+    await resetSession();
+    
     return res.status(500).json({
       success: false,
       error: error.message || 'Erro desconhecido'
@@ -1390,55 +582,69 @@ router.post('/salvar', async (req, res) => {
     if (!animais || !Array.isArray(animais) || animais.length === 0) {
       return res.status(400).json({
         success: false,
-        error: 'É necessário enviar um array de animais para salvar'
+        error: 'Nenhum animal fornecido para salvar'
       });
     }
     
-    console.log(`Recebidos ${animais.length} animais para salvar no banco de dados`);
+    console.log(`Iniciando salvamento de ${animais.length} animais no banco de dados`);
     
     const resultados = [];
     const erros = [];
     
-    // Processar cada animal
     for (const animal of animais) {
       try {
         // Verificar se o cliente existe
         const { data: clienteExistente, error: erroCliente } = await supabase
           .from('clientes')
-          .select('id')
+          .select('*')
           .eq('codigo', animal.tutor_codigo)
           .single();
         
-        if (erroCliente) {
-          console.error(`Erro ao buscar cliente ${animal.tutor_codigo}:`, erroCliente);
+        if (erroCliente && erroCliente.code !== 'PGRST116') {
+          console.error(`Erro ao verificar cliente ${animal.tutor_codigo}:`, erroCliente);
           erros.push({
             animal: animal.codigo,
-            erro: `Cliente não encontrado: ${erroCliente.message}`
+            erro: `Erro ao verificar cliente: ${erroCliente.message}`
           });
           continue;
         }
         
+        // Se o cliente não existir, criar um básico
         if (!clienteExistente) {
-          console.error(`Cliente com código ${animal.tutor_codigo} não encontrado`);
-          erros.push({
-            animal: animal.codigo,
-            erro: `Cliente com código ${animal.tutor_codigo} não encontrado`
-          });
-          continue;
+          console.log(`Cliente ${animal.tutor_codigo} não encontrado, criando...`);
+          
+          const { error: erroNovoCliente } = await supabase
+            .from('clientes')
+            .insert({
+              codigo: animal.tutor_codigo,
+              nome: animal.tutor_nome,
+              data_cadastro: new Date().toISOString()
+            });
+          
+          if (erroNovoCliente) {
+            console.error(`Erro ao criar cliente ${animal.tutor_codigo}:`, erroNovoCliente);
+            erros.push({
+              animal: animal.codigo,
+              erro: `Erro ao criar cliente: ${erroNovoCliente.message}`
+            });
+            continue;
+          }
+          
+          console.log(`Cliente ${animal.tutor_codigo} criado com sucesso`);
         }
         
         // Verificar se o animal já existe
-        const { data: animalExistente, error: erroAnimalExistente } = await supabase
+        const { data: animalExistente, error: erroAnimal } = await supabase
           .from('animais')
-          .select('id')
+          .select('*')
           .eq('codigo', animal.codigo)
           .single();
         
-        if (erroAnimalExistente && erroAnimalExistente.code !== 'PGRST116') {
-          console.error(`Erro ao verificar animal ${animal.codigo}:`, erroAnimalExistente);
+        if (erroAnimal && erroAnimal.code !== 'PGRST116') {
+          console.error(`Erro ao verificar animal ${animal.codigo}:`, erroAnimal);
           erros.push({
             animal: animal.codigo,
-            erro: `Erro ao verificar animal: ${erroAnimalExistente.message}`
+            erro: `Erro ao verificar animal: ${erroAnimal.message}`
           });
           continue;
         }
@@ -1450,83 +656,65 @@ router.post('/salvar', async (req, res) => {
           especie: animal.especie,
           raca: animal.raca,
           sexo: animal.sexo,
-          data_nascimento: null as string | null, // Será calculado abaixo
-          data_obito: animal.data_obito ? new Date(animal.data_obito).toISOString() : null,
-          data_cadastro: new Date(animal.data_cadastro).toISOString(),
-          cliente_id: clienteExistente.id,
-          situacao: animal.data_obito ? 'Óbito' : 'Ativo'
+          data_nascimento: animal.data_nascimento,
+          data_cadastro: animal.data_cadastro,
+          data_obito: animal.data_obito,
+          tutor_codigo: animal.tutor_codigo
         };
-        
-        // Tentar calcular a data de nascimento a partir da idade
-        try {
-          if (animal.data_nascimento) {
-            const idadeTexto = animal.data_nascimento;
-            if (idadeTexto.includes('anos')) {
-              const anos = parseInt(idadeTexto.split('anos')[0].trim());
-              const dataAtual = new Date();
-              const dataNascimento = new Date();
-              dataNascimento.setFullYear(dataAtual.getFullYear() - anos);
-              dadosAnimal.data_nascimento = dataNascimento.toISOString();
-            } else if (idadeTexto.includes('meses')) {
-              const meses = parseInt(idadeTexto.split('meses')[0].trim());
-              const dataAtual = new Date();
-              const dataNascimento = new Date();
-              dataNascimento.setMonth(dataAtual.getMonth() - meses);
-              dadosAnimal.data_nascimento = dataNascimento.toISOString();
-            }
-          }
-        } catch (erroDataNascimento) {
-          console.error(`Erro ao calcular data de nascimento para ${animal.codigo}:`, erroDataNascimento);
-        }
         
         let resultado;
         
-        // Inserir ou atualizar o animal
+        // Se o animal já existir, atualizar
         if (animalExistente) {
-          // Atualizar animal existente
-          const { data, error } = await supabase
+          console.log(`Animal ${animal.codigo} encontrado, atualizando...`);
+          
+          const { data: animalAtualizado, error: erroAtualizar } = await supabase
             .from('animais')
             .update(dadosAnimal)
             .eq('codigo', animal.codigo)
-            .select();
+            .select()
+            .single();
           
-          if (error) {
-            console.error(`Erro ao atualizar animal ${animal.codigo}:`, error);
+          if (erroAtualizar) {
+            console.error(`Erro ao atualizar animal ${animal.codigo}:`, erroAtualizar);
             erros.push({
               animal: animal.codigo,
-              erro: `Erro ao atualizar: ${error.message}`
+              erro: `Erro ao atualizar animal: ${erroAtualizar.message}`
             });
             continue;
           }
           
-          resultado = { ...data[0], acao: 'atualizado' };
+          resultado = { ...animalAtualizado, acao: 'atualizado' };
+          console.log(`Animal ${animal.codigo} atualizado com sucesso`);
         } else {
-          // Inserir novo animal
-          const { data, error } = await supabase
-            .from('animais')
-            .insert([dadosAnimal])
-            .select();
+          // Se o animal não existir, criar
+          console.log(`Animal ${animal.codigo} não encontrado, criando...`);
           
-          if (error) {
-            console.error(`Erro ao inserir animal ${animal.codigo}:`, error);
+          const { data: novoAnimal, error: erroCriar } = await supabase
+            .from('animais')
+            .insert(dadosAnimal)
+            .select()
+            .single();
+          
+          if (erroCriar) {
+            console.error(`Erro ao criar animal ${animal.codigo}:`, erroCriar);
             erros.push({
               animal: animal.codigo,
-              erro: `Erro ao inserir: ${error.message}`
+              erro: `Erro ao criar animal: ${erroCriar.message}`
             });
             continue;
           }
           
-          resultado = { ...data[0], acao: 'inserido' };
+          resultado = { ...novoAnimal, acao: 'criado' };
+          console.log(`Animal ${animal.codigo} criado com sucesso`);
         }
         
         resultados.push(resultado);
-        console.log(`Animal ${animal.codigo} ${animalExistente ? 'atualizado' : 'inserido'} com sucesso`);
-        
-      } catch (erroProcessamento) {
-        console.error(`Erro ao processar animal ${animal.codigo}:`, erroProcessamento);
+      } catch (error: any) {
+        console.error(`Erro ao processar animal ${animal.codigo}:`, error);
         erros.push({
           animal: animal.codigo,
-          erro: `Erro ao processar: ${erroProcessamento.message}`
+          erro: error.message || 'Erro desconhecido'
         });
       }
     }

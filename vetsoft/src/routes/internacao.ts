@@ -1,6 +1,8 @@
 import { Router } from 'express';
-import { chromium } from 'playwright';
-import { config } from '../config';
+import { 
+  navigateToInternacao, 
+  resetSession 
+} from '../utils/browserSession';
 
 const router = Router();
 
@@ -28,38 +30,18 @@ interface Internacao {
 
 // Rota para obter todas as internações
 router.get('/', async (req, res) => {
-  const browser = await chromium.launch({
-    headless: false, // Alterado para false para tornar visível
-    slowMo: 50 // Adiciona um atraso para melhor visualização
-  });
-
   try {
     console.log('Iniciando extração de dados de internação...');
     
-    const context = await browser.newContext();
-    const page = await context.newPage();
+    // Usar o modo headless com base no parâmetro da query
+    const showBrowser = req.query.show === 'true';
+    const headless = !showBrowser;
     
-    // Acessar a página de login
-    await page.goto('https://dranimal.vetsoft.com.br/');
-    console.log('Página de login carregada');
+    // Verificar se deve forçar a atualização da página
+    const forceRefresh = req.query.refresh === 'true';
     
-    // Realizar login
-    console.log('Preenchendo credenciais...');
-    await page.getByRole('textbox', { name: 'Usuário *' }).fill(config.vetsoft.username || '');
-    await page.getByRole('textbox', { name: 'Senha * ' }).fill(config.vetsoft.password || '');
-    await page.getByRole('button', { name: 'Acessar ' }).click();
-    console.log('Credenciais enviadas, aguardando navegação...');
-    
-    // Aguardar carregamento da página inicial após login
-    await page.waitForNavigation({ waitUntil: 'networkidle' });
-    console.log('Login realizado com sucesso');
-    
-    // Navegar para a página de internação - usando um seletor mais específico
-    console.log('Navegando para a página de internação...');
-    // Usar um seletor mais específico para o link de internação
-    await page.locator('a[href="/m/internacoes/#list/page/1"]').first().click();
-    await page.waitForLoadState('networkidle');
-    console.log('Página de internação carregada');
+    // Obter página já logada e navegada para a página de internação
+    const page = await navigateToInternacao(headless, forceRefresh);
     
     // Capturar screenshot para debug
     await page.screenshot({ path: 'internacao-screenshot.png' });
@@ -185,9 +167,6 @@ router.get('/', async (req, res) => {
       });
     }
     
-    // Aguardar um pouco antes de fechar o navegador para visualização
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
     return res.json({
       success: true,
       data: internacoes,
@@ -196,13 +175,14 @@ router.get('/', async (req, res) => {
     
   } catch (error: any) {
     console.error('Erro ao extrair dados de internação:', error);
+    
+    // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
+    await resetSession();
+    
     return res.status(500).json({
       success: false,
       error: `Erro ao extrair dados de internação: ${error.message}`
     });
-  } finally {
-    await browser.close();
-    console.log('Navegador fechado');
   }
 });
 
@@ -217,37 +197,18 @@ router.get('/:id', async (req, res) => {
     });
   }
   
-  const browser = await chromium.launch({
-    headless: false, // Alterado para false para tornar visível
-    slowMo: 50 // Adiciona um atraso para melhor visualização
-  });
-  
   try {
     console.log(`Buscando detalhes da internação do animal: ${animalId}`);
     
-    const context = await browser.newContext();
-    const page = await context.newPage();
+    // Usar o modo headless com base no parâmetro da query
+    const showBrowser = req.query.show === 'true';
+    const headless = !showBrowser;
     
-    // Acessar a página de login
-    await page.goto('https://dranimal.vetsoft.com.br/');
-    console.log('Página de login carregada');
+    // Verificar se deve forçar a atualização da página
+    const forceRefresh = req.query.refresh === 'true';
     
-    // Realizar login
-    console.log('Preenchendo credenciais...');
-    await page.getByRole('textbox', { name: 'Usuário *' }).fill(config.vetsoft.username || '');
-    await page.getByRole('textbox', { name: 'Senha * ' }).fill(config.vetsoft.password || '');
-    await page.getByRole('button', { name: 'Acessar ' }).click();
-    console.log('Credenciais enviadas, aguardando navegação...');
-    
-    // Aguardar carregamento da página inicial após login
-    await page.waitForNavigation({ waitUntil: 'networkidle' });
-    console.log('Login realizado com sucesso');
-    
-    // Navegar para a página de internação - usando um seletor mais específico
-    console.log('Navegando para a página de internação...');
-    await page.locator('a[href="/m/internacoes/#list/page/1"]').first().click();
-    await page.waitForLoadState('networkidle');
-    console.log('Página de internação carregada');
+    // Obter página já logada e navegada para a página de internação
+    const page = await navigateToInternacao(headless, forceRefresh);
     
     // Encontrar e clicar na ficha do animal específico
     const fichaSelector = `.btn-ficha-animal[href*="cod_animal=${animalId}"]`;
@@ -364,9 +325,6 @@ router.get('/:id', async (req, res) => {
     console.log(`Tutor: ${detalhesInternacao.tutor.nome} (ID: ${detalhesInternacao.tutor.id})`);
     console.log(`Código de Internação: ${detalhesInternacao.internacao.codigo}`);
     
-    // Aguardar um pouco antes de fechar o navegador para visualização
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
     return res.json({
       success: true,
       data: detalhesInternacao
@@ -374,13 +332,14 @@ router.get('/:id', async (req, res) => {
     
   } catch (error: any) {
     console.error(`Erro ao buscar detalhes da internação do animal ${animalId}:`, error);
+    
+    // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
+    await resetSession();
+    
     return res.status(500).json({
       success: false,
       error: `Erro ao buscar detalhes da internação: ${error.message}`
     });
-  } finally {
-    await browser.close();
-    console.log('Navegador fechado');
   }
 });
 
