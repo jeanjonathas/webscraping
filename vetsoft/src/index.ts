@@ -7,6 +7,7 @@ import animaisRouter from './routes/animais';
 import configRouter from './routes/config';
 import importacaoRouter from './routes/importacao';
 import internacaoRouter from './routes/internacao';
+import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
@@ -72,13 +73,13 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Configurar o Express para formatar JSON de forma legível
 app.set('json spaces', 2);
 
-// Rotas da API
-app.use('/agendamentos', agendamentosRouter);
-app.use('/cadastro', cadastroRouter);
-app.use('/animais', animaisRouter);
-app.use('/config', configRouter);
-app.use('/importacao', importacaoRouter);
-app.use('/internacao', internacaoRouter);
+// Rotas da API protegidas com API Key
+app.use('/agendamentos', apiKeyAuth, agendamentosRouter);
+app.use('/cadastro', apiKeyAuth, cadastroRouter);
+app.use('/animais', apiKeyAuth, animaisRouter);
+app.use('/config', apiKeyAuth, configRouter);
+app.use('/importacao', apiKeyAuth, importacaoRouter);
+app.use('/internacao', apiKeyAuth, internacaoRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {
