@@ -4,6 +4,9 @@ import path from 'path';
 import agendamentosRouter from './routes/consulta';
 import cadastroRouter from './routes/cadastro';
 import animaisRouter from './routes/animais';
+import configRouter from './routes/config';
+import importacaoRouter from './routes/importacao';
+import internacaoRouter from './routes/internacao';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
 import { createClient } from '@supabase/supabase-js';
@@ -73,10 +76,18 @@ app.set('json spaces', 2);
 app.use('/agendamentos', agendamentosRouter);
 app.use('/cadastro', cadastroRouter);
 app.use('/animais', animaisRouter);
+app.use('/config', configRouter);
+app.use('/importacao', importacaoRouter);
+app.use('/internacao', internacaoRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/exportar-animais.html'));
+});
+
+// Página para importar animais
+app.get('/importar-animais', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/importar-animais.html'));
 });
 
 // API para importação de clientes
