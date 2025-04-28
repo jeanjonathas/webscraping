@@ -25,7 +25,8 @@ services:
       npm install --no-fund --no-audit --legacy-peer-deps --force && 
       echo 'Instalando browsers do Playwright...' &&
       npx playwright install chromium &&
-      echo 'Pulando compilação TypeScript...' &&
+      echo 'Compilando TypeScript...' &&
+      npx tsc || true &&
       echo 'Iniciando servidor...' &&
       NODE_ENV=production npm run start"
     environment:
