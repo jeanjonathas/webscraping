@@ -23,10 +23,14 @@ services:
       echo 'Instalando dependências Node.js...' &&
       npm config set registry https://registry.npmjs.org/ &&
       npm install --no-fund --no-audit --legacy-peer-deps --force && 
+      echo 'Instalando TypeScript globalmente...' &&
+      npm install -g typescript &&
       echo 'Instalando browsers do Playwright...' &&
       npx playwright install chromium &&
       echo 'Compilando TypeScript...' &&
-      npx tsc || true &&
+      npm run build &&
+      echo 'Verificando middleware de autenticação...' &&
+      ls -la dist/middlewares/ || true &&
       echo 'Iniciando servidor...' &&
       NODE_ENV=production npm run start"
     environment:
