@@ -179,6 +179,19 @@ router.get('/', async (req, res) => {
     // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
     await resetSession();
     
+    // Verificar se o erro é relacionado ao limite de tentativas
+    if (error.message && (
+        error.message.includes('Falha no login após') || 
+        error.message.includes('Falha na navegação após') ||
+        error.message.includes('tentativas excedido')
+    )) {
+      return res.status(503).json({
+        success: false,
+        error: 'Limite de tentativas excedido. Serviço temporariamente indisponível.',
+        details: error.message
+      });
+    }
+    
     return res.status(500).json({
       success: false,
       error: `Erro ao extrair dados de internação: ${error.message}`
@@ -335,6 +348,19 @@ router.get('/:id', async (req, res) => {
     
     // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
     await resetSession();
+    
+    // Verificar se o erro é relacionado ao limite de tentativas
+    if (error.message && (
+        error.message.includes('Falha no login após') || 
+        error.message.includes('Falha na navegação após') ||
+        error.message.includes('tentativas excedido')
+    )) {
+      return res.status(503).json({
+        success: false,
+        error: 'Limite de tentativas excedido. Serviço temporariamente indisponível.',
+        details: error.message
+      });
+    }
     
     return res.status(500).json({
       success: false,

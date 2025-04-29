@@ -8,6 +8,12 @@ let page: Page | null = null;
 let lastUsed: number = Date.now();
 let isLoggedIn: boolean = false;
 let browserStartTime: number = Date.now();
+let loginAttempts: number = 0;
+let navigationAttempts: number = 0;
+
+// Número máximo de tentativas de login e navegação
+const MAX_LOGIN_ATTEMPTS = 3;
+const MAX_NAVIGATION_ATTEMPTS = 3;
 
 // Tempo máximo de inatividade antes de fechar o navegador (em milissegundos)
 const MAX_IDLE_TIME = 6 * 60 * 60 * 1000; // 6 horas
@@ -110,6 +116,9 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
       } else {
         console.log('Sessão ainda válida');
         lastUsed = Date.now();
+        // Resetar contadores de tentativas quando a sessão é válida
+        loginAttempts = 0;
+        navigationAttempts = 0;
         return currentPage;
       }
     } catch (error) {
@@ -121,6 +130,15 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
   
   if (!isLoggedIn) {
     console.log('Realizando login...');
+    
+    // Verificar se excedeu o número máximo de tentativas
+    if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+      console.error(`Número máximo de tentativas de login (${MAX_LOGIN_ATTEMPTS}) excedido. Desistindo.`);
+      throw new Error(`Falha no login após ${MAX_LOGIN_ATTEMPTS} tentativas.`);
+    }
+    
+    loginAttempts++; // Incrementar contador de tentativas
+    console.log(`Tentativa de login ${loginAttempts}/${MAX_LOGIN_ATTEMPTS}`);
     
     try {
       // Acessar a página de login
@@ -136,6 +154,9 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
         console.log('Já está logado!');
         isLoggedIn = true;
         lastUsed = Date.now();
+        // Resetar contadores de tentativas quando o login é bem-sucedido
+        loginAttempts = 0;
+        navigationAttempts = 0;
         return currentPage;
       }
       
@@ -143,12 +164,12 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
       console.log('Preenchendo credenciais...');
       
       // Aguardar elementos de login estarem visíveis
-      await currentPage.waitForSelector('input[name="login"]', { timeout: 10000 });
-      await currentPage.waitForSelector('input[name="senha"]', { timeout: 10000 });
+      await currentPage.waitForSelector('input[name="user"]', { timeout: 10000 });
+      await currentPage.waitForSelector('input[name="pwd"]', { timeout: 10000 });
       
-      await currentPage.getByRole('textbox', { name: 'Usuário *' }).fill(config.vetsoft.username || '');
-      await currentPage.getByRole('textbox', { name: 'Senha * ' }).fill(config.vetsoft.password || '');
-      await currentPage.getByRole('button', { name: 'Acessar ' }).click();
+      await currentPage.fill('input[name="user"]', config.vetsoft.username || '');
+      await currentPage.fill('input[name="pwd"]', config.vetsoft.password || '');
+      await currentPage.click('button.btn-login');
       console.log('Credenciais enviadas, aguardando navegação...');
       
       // Aguardar carregamento da página inicial após login
@@ -163,6 +184,7 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
       
       isLoggedIn = true;
       browserStartTime = Date.now(); // Atualizar o tempo de início do navegador após login bem-sucedido
+      loginAttempts = 0; // Resetar contador de tentativas após login bem-sucedido
     } catch (error) {
       console.error('Erro ao realizar login:', error);
       // Se houver erro no login, resetar a sessão
@@ -181,6 +203,17 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
 export async function navigateToInternacao(headless: boolean = false, forceRefresh: boolean = false): Promise<Page> {
   // Obter a página atual ou criar uma nova
   const currentPage = await getPage(headless);
+  
+  // Verificar se excedeu o número máximo de tentativas
+  if (navigationAttempts >= MAX_NAVIGATION_ATTEMPTS) {
+    console.error(`Número máximo de tentativas de navegação (${MAX_NAVIGATION_ATTEMPTS}) excedido. Desistindo.`);
+    // Resetar contadores para permitir novas tentativas no futuro
+    navigationAttempts = 0;
+    throw new Error(`Falha na navegação após ${MAX_NAVIGATION_ATTEMPTS} tentativas.`);
+  }
+  
+  navigationAttempts++; // Incrementar contador de tentativas
+  console.log(`Tentativa de navegação ${navigationAttempts}/${MAX_NAVIGATION_ATTEMPTS}`);
   
   try {
     // Se forceRefresh for true, sempre recarregar a página independentemente do estado de login
@@ -209,6 +242,7 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
       // Se chegou aqui, está logado
       isLoggedIn = true;
       lastUsed = Date.now();
+      navigationAttempts = 0; // Resetar contador após sucesso
       return currentPage;
     }
     // Se já estiver logado, navegar diretamente para a URL da internação
@@ -242,6 +276,7 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
       
       // Confirmar que está logado
       lastUsed = Date.now();
+      navigationAttempts = 0; // Resetar contador após sucesso
       return currentPage;
     } else {
       // Se não estiver logado, fazer login primeiro e depois navegar
@@ -251,8 +286,10 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
     console.error('Erro ao navegar para a página de internação:', error);
     // Se houver erro na navegação, pode ser que a sessão tenha expirado
     isLoggedIn = false;
-    // Tentar novamente com login
+    // Tentar novamente com login, se não excedeu o número máximo de tentativas
     await resetSession();
+    
+    // Não incrementar navigationAttempts aqui, pois a próxima chamada já vai incrementar
     return navigateToInternacao(headless, forceRefresh);
   }
   
@@ -263,6 +300,7 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
     await currentPage.goto('https://dranimal.vetsoft.com.br/m/internacoes/#list/page/1', { waitUntil: 'networkidle' });
     console.log('Página de internação carregada');
     lastUsed = Date.now();
+    navigationAttempts = 0; // Resetar contador após sucesso
     return currentPage;
   }
 }
@@ -294,8 +332,8 @@ async function checkSessionExpired(page: Page): Promise<boolean> {
     
     // Verificar se há elementos específicos da página de login
     const hasLoginElements = await page.evaluate(() => {
-      return !!document.querySelector('input[name="login"]') || 
-             !!document.querySelector('input[name="senha"]') ||
+      return !!document.querySelector('input[name="user"]') || 
+             !!document.querySelector('input[name="pwd"]') ||
              !!document.querySelector('form.login-form');
     });
     
