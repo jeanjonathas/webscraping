@@ -7,15 +7,28 @@ let context: BrowserContext | null = null;
 let page: Page | null = null;
 let lastUsed: number = Date.now();
 let isLoggedIn: boolean = false;
+let browserStartTime: number = Date.now();
 
 // Tempo máximo de inatividade antes de fechar o navegador (em milissegundos)
-const MAX_IDLE_TIME = 30 * 60 * 1000; // 30 minutos
+const MAX_IDLE_TIME = 6 * 60 * 60 * 1000; // 6 horas
+
+// Tempo máximo de vida do navegador antes de reiniciar (em milissegundos)
+const MAX_BROWSER_LIFETIME = 12 * 60 * 60 * 1000; // 12 horas
 
 // Intervalo para verificar se o navegador deve ser fechado
 const checkInterval = setInterval(async () => {
-  if (browser && Date.now() - lastUsed > MAX_IDLE_TIME) {
-    console.log('Fechando navegador por inatividade...');
-    await closeBrowser();
+  if (browser) {
+    // Verificar se o navegador está inativo por muito tempo
+    if (Date.now() - lastUsed > MAX_IDLE_TIME) {
+      console.log('Fechando navegador por inatividade (6 horas)...');
+      await closeBrowser();
+    }
+    // Verificar se o navegador está aberto por muito tempo
+    else if (Date.now() - browserStartTime > MAX_BROWSER_LIFETIME) {
+      console.log('Reiniciando navegador após 12 horas de uso...');
+      await resetSession();
+      browserStartTime = Date.now();
+    }
   }
 }, 60 * 1000); // Verificar a cada minuto
 
@@ -28,6 +41,7 @@ export async function getBrowser(headless: boolean = false): Promise<Browser> {
       slowMo: headless ? 0 : 50 // Adiciona atraso apenas se não for headless
     });
     isLoggedIn = false;
+    browserStartTime = Date.now();
   }
   
   lastUsed = Date.now();
@@ -185,6 +199,9 @@ export async function forceRefreshPage(headless: boolean = false): Promise<Page>
 export async function resetSession(): Promise<void> {
   console.log('Resetando sessão do navegador...');
   await closeBrowser();
+  
+  // Atualizar o tempo de início do navegador
+  browserStartTime = Date.now();
   
   // As próximas chamadas para getBrowser, getBrowserContext ou getPage criarão novas instâncias
 }
