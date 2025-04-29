@@ -9,7 +9,7 @@ let lastUsed: number = Date.now();
 let isLoggedIn: boolean = false;
 
 // Tempo máximo de inatividade antes de fechar o navegador (em milissegundos)
-const MAX_IDLE_TIME = 10 * 60 * 1000; // 10 minutos
+const MAX_IDLE_TIME = 30 * 60 * 1000; // 30 minutos
 
 // Intervalo para verificar se o navegador deve ser fechado
 const checkInterval = setInterval(async () => {

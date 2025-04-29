@@ -7,6 +7,7 @@ import animaisRouter from './routes/animais';
 import configRouter from './routes/config';
 import importacaoRouter from './routes/importacao';
 import internacaoRouter from './routes/internacao';
+import clienteRouter from './routes/cliente';
 import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -80,6 +81,7 @@ app.use('/animais', apiKeyAuth, animaisRouter);
 app.use('/config', apiKeyAuth, configRouter);
 app.use('/importacao', apiKeyAuth, importacaoRouter);
 app.use('/internacao', apiKeyAuth, internacaoRouter);
+app.use('/cliente', apiKeyAuth, clienteRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {
