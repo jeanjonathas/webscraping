@@ -67,6 +67,19 @@ export async function getPage(headless: boolean = false): Promise<Page> {
     const contextInstance = await getBrowserContext(headless);
     console.log('Criando nova página...');
     page = await contextInstance.newPage();
+    
+    // Configurar listener para capturar mensagens e erros do console
+    page.on('console', msg => {
+      const text = msg.text();
+      if (msg.type() === 'error' || text.includes('401') || text.includes('Unauthorized')) {
+        console.log(`Erro no console do navegador: ${text}`);
+        if (text.includes('401') || text.includes('Unauthorized')) {
+          console.log('Detectado erro 401 no console, marcando sessão como expirada');
+          isLoggedIn = false;
+        }
+      }
+    });
+    
     isLoggedIn = false;
   }
   
@@ -78,12 +91,43 @@ export async function getPage(headless: boolean = false): Promise<Page> {
 export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
   const currentPage = await getPage(headless);
   
+  // Verificar se já está logado
+  if (isLoggedIn) {
+    console.log('Verificando se a sessão ainda é válida...');
+    
+    try {
+      // Tentar acessar uma página que requer autenticação
+      await currentPage.goto('https://dranimal.vetsoft.com.br/m/dashboard/', { 
+        waitUntil: 'networkidle',
+        timeout: 30000 // 30 segundos de timeout
+      });
+      
+      // Verificar se foi redirecionado para login ou se a sessão expirou
+      if (await checkSessionExpired(currentPage)) {
+        console.log('Sessão expirada, realizando login novamente...');
+        isLoggedIn = false;
+        // Continue para o bloco de login abaixo
+      } else {
+        console.log('Sessão ainda válida');
+        lastUsed = Date.now();
+        return currentPage;
+      }
+    } catch (error) {
+      console.error('Erro ao verificar sessão:', error);
+      isLoggedIn = false;
+      // Continue para o bloco de login abaixo
+    }
+  }
+  
   if (!isLoggedIn) {
     console.log('Realizando login...');
     
     try {
       // Acessar a página de login
-      await currentPage.goto('https://dranimal.vetsoft.com.br/');
+      await currentPage.goto('https://dranimal.vetsoft.com.br/', {
+        waitUntil: 'networkidle',
+        timeout: 30000 // 30 segundos de timeout
+      });
       console.log('Página de login carregada');
       
       // Verificar se já está na página inicial (já logado)
@@ -91,21 +135,34 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
       if (currentUrl.includes('/home') || currentUrl.includes('/dashboard')) {
         console.log('Já está logado!');
         isLoggedIn = true;
+        lastUsed = Date.now();
         return currentPage;
       }
       
       // Realizar login
       console.log('Preenchendo credenciais...');
+      
+      // Aguardar elementos de login estarem visíveis
+      await currentPage.waitForSelector('input[name="login"]', { timeout: 10000 });
+      await currentPage.waitForSelector('input[name="senha"]', { timeout: 10000 });
+      
       await currentPage.getByRole('textbox', { name: 'Usuário *' }).fill(config.vetsoft.username || '');
       await currentPage.getByRole('textbox', { name: 'Senha * ' }).fill(config.vetsoft.password || '');
       await currentPage.getByRole('button', { name: 'Acessar ' }).click();
       console.log('Credenciais enviadas, aguardando navegação...');
       
       // Aguardar carregamento da página inicial após login
-      await currentPage.waitForNavigation({ waitUntil: 'networkidle' });
+      await currentPage.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
       console.log('Login realizado com sucesso');
       
+      // Verificar se o login foi bem-sucedido
+      const loggedInUrl = currentPage.url();
+      if (loggedInUrl.includes('/login') || await checkSessionExpired(currentPage)) {
+        throw new Error('Falha no login: redirecionado para página de login ou sessão expirou');
+      }
+      
       isLoggedIn = true;
+      browserStartTime = Date.now(); // Atualizar o tempo de início do navegador após login bem-sucedido
     } catch (error) {
       console.error('Erro ao realizar login:', error);
       // Se houver erro no login, resetar a sessão
@@ -129,13 +186,22 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
     // Se forceRefresh for true, sempre recarregar a página independentemente do estado de login
     if (forceRefresh) {
       console.log('Forçando atualização da página de internação...');
+      
+      // Configurar listener para detectar respostas com erro 401
+      currentPage.on('response', async response => {
+        if (response.status() === 401) {
+          console.log('Detectada resposta 401 (Unauthorized), sessão expirada');
+          isLoggedIn = false;
+        }
+      });
+      
       await currentPage.goto('https://dranimal.vetsoft.com.br/m/internacoes/#list/page/1', { waitUntil: 'networkidle' });
       console.log('Página de internação recarregada');
       
-      // Verificar se foi redirecionado para login
+      // Verificar se foi redirecionado para login ou se há mensagem de erro
       const currentUrl = currentPage.url();
-      if (currentUrl.includes('/login')) {
-        console.log('Redirecionado para login, realizando login...');
+      if (currentUrl.includes('/login') || await checkSessionExpired(currentPage)) {
+        console.log('Redirecionado para login ou sessão expirada, realizando login...');
         isLoggedIn = false;
         return await ensureLoggedInAndNavigate();
       }
@@ -149,6 +215,14 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
     else if (isLoggedIn) {
       console.log('Navegando diretamente para a página de internação...');
       
+      // Configurar listener para detectar respostas com erro 401
+      currentPage.on('response', async response => {
+        if (response.status() === 401) {
+          console.log('Detectada resposta 401 (Unauthorized), sessão expirada');
+          isLoggedIn = false;
+        }
+      });
+      
       // Verificar se já estamos na página de internação
       const currentUrl = currentPage.url();
       if (currentUrl.includes('/internacoes/')) {
@@ -158,6 +232,13 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
         await currentPage.goto('https://dranimal.vetsoft.com.br/m/internacoes/#list/page/1', { waitUntil: 'networkidle' });
       }
       console.log('Página de internação carregada');
+      
+      // Verificar se a sessão expirou após a navegação
+      if (await checkSessionExpired(currentPage)) {
+        console.log('Sessão expirada após navegação, realizando login novamente...');
+        isLoggedIn = false;
+        return await ensureLoggedInAndNavigate();
+      }
       
       // Confirmar que está logado
       lastUsed = Date.now();
@@ -183,6 +264,62 @@ export async function navigateToInternacao(headless: boolean = false, forceRefre
     console.log('Página de internação carregada');
     lastUsed = Date.now();
     return currentPage;
+  }
+}
+
+// Função para verificar se a sessão expirou
+async function checkSessionExpired(page: Page): Promise<boolean> {
+  try {
+    // Verificar se há mensagem de erro de sessão expirada no console
+    const consoleMessages = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('div.alert, div.error-message, .toast-message, .toast-error'))
+        .map(el => el.textContent?.trim() || '');
+    });
+    
+    const sessionExpiredMessages = [
+      'Você não logou no sistema',
+      'sua sessão expirou',
+      'efetue o login novamente',
+      'Unauthorized',
+      '401'
+    ];
+    
+    // Verificar se alguma mensagem de erro de sessão expirada está presente
+    const hasSessionExpiredMessage = consoleMessages.some(message => 
+      sessionExpiredMessages.some(expiredMsg => message.includes(expiredMsg))
+    );
+    
+    // Verificar se a página atual é a página de login
+    const isLoginPage = page.url().includes('/login');
+    
+    // Verificar se há elementos específicos da página de login
+    const hasLoginElements = await page.evaluate(() => {
+      return !!document.querySelector('input[name="login"]') || 
+             !!document.querySelector('input[name="senha"]') ||
+             !!document.querySelector('form.login-form');
+    });
+    
+    // Verificar se a página está vazia ou tem conteúdo mínimo (possível redirecionamento)
+    const pageContent = await page.evaluate(() => {
+      // Verificar se o corpo da página tem conteúdo mínimo
+      const bodyContent = document.body.innerText.trim();
+      return {
+        isEmpty: bodyContent.length < 50, // Página praticamente vazia
+        hasErrorText: bodyContent.includes('401') || 
+                     bodyContent.includes('Unauthorized') || 
+                     bodyContent.includes('não logou') ||
+                     bodyContent.includes('sessão expirou')
+      };
+    });
+    
+    return hasSessionExpiredMessage || 
+           isLoginPage || 
+           hasLoginElements || 
+           pageContent.isEmpty || 
+           pageContent.hasErrorText;
+  } catch (error) {
+    console.error('Erro ao verificar se a sessão expirou:', error);
+    return true; // Em caso de erro, assume que a sessão expirou para garantir
   }
 }
 
@@ -231,8 +368,8 @@ export async function navigateToRelatorioAnimais(headless: boolean = false, forc
       
       // Verificar se realmente está na página correta (pode ter sido redirecionado para login)
       const currentUrl = currentPage.url();
-      if (currentUrl.includes('/login')) {
-        console.log('Redirecionado para login, realizando login...');
+      if (currentUrl.includes('/login') || await checkSessionExpired(currentPage)) {
+        console.log('Redirecionado para login ou sessão expirada, realizando login...');
         isLoggedIn = false;
         return await ensureLoggedInAndNavigate();
       }
