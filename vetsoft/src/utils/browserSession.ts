@@ -87,6 +87,42 @@ export async function getPage(headless: boolean = false): Promise<Page> {
       }
     });
     
+    // Configurar listener para tratar diálogos (alerts, confirms, prompts)
+    page.on('dialog', async dialog => {
+      const message = dialog.message();
+      console.log(`Diálogo detectado: ${dialog.type()}, mensagem: ${message}`);
+      
+      // Verificar se é o alerta de sessão expirada
+      if (message.includes('usuário está logado em outro navegador') || 
+          message.includes('sessão foi finalizada')) {
+        console.log('Detectado alerta de sessão expirada em outro navegador');
+        
+        try {
+          // Aceitar o diálogo
+          await dialog.accept();
+          console.log('Diálogo aceito automaticamente');
+          
+          // Marcar sessão como expirada
+          isLoggedIn = false;
+          
+          // Resetar a sessão (fechar e recriar o navegador)
+          await resetSession();
+        } catch (error) {
+          console.error('Erro ao tentar aceitar diálogo:', error);
+          // Se não conseguir aceitar o diálogo, forçar o fechamento do navegador
+          await closeBrowser();
+        }
+      } else {
+        // Para outros tipos de diálogos, apenas aceitar
+        try {
+          await dialog.accept();
+          console.log('Diálogo aceito automaticamente');
+        } catch (error) {
+          console.error('Erro ao tentar aceitar diálogo:', error);
+        }
+      }
+    });
+    
     isLoggedIn = false;
   }
   
