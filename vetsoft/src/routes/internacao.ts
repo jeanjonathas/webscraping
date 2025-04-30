@@ -151,6 +151,20 @@ router.get('/', async (req, res) => {
       console.log(`Código de Internação: ${internacao.codigo_internacao}`);
     });
     
+    // Após extrair os dados, navegar para o dashboard para evitar que outras requisições
+    // assumam que já estão na página correta
+    try {
+      console.log('Navegando para o dashboard após extrair dados de internação...');
+      await page.goto('https://dranimal.vetsoft.com.br/m/dashboard/', { 
+        waitUntil: 'networkidle',
+        timeout: 10000 // 10 segundos de timeout
+      });
+      console.log('Navegação para o dashboard concluída');
+    } catch (navError) {
+      console.warn('Aviso: Não foi possível navegar para o dashboard após extrair dados:', navError);
+      // Não falhar a requisição se a navegação para o dashboard falhar
+    }
+    
     // Filtrar por situação se especificado
     if (req.query.situacao) {
       const situacaoFiltro = req.query.situacao as string;
