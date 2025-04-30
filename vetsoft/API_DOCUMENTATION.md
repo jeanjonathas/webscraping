@@ -107,6 +107,8 @@ Retorna os dados detalhados de um cliente específico e seus animais.
 
 Insere uma passagem de plantão na ficha de um animal internado.
 
+**Método:** POST (apenas POST é suportado, GET não está disponível)
+
 **Corpo da Requisição (JSON):**
 ```json
 {
