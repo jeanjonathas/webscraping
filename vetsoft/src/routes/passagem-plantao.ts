@@ -87,10 +87,78 @@ router.post('/', async (req, res) => {
     // Selecionar opção de Ocorrência/Observação
     await page.getByRole('link', { name: ' Ocorrência/Observação' }).click();
     
-    // Selecionar responsável
-    await page.getByRole('combobox', { name: 'Search' }).click();
-    await page.getByRole('combobox', { name: 'Search' }).fill(responsavel);
-    await page.getByRole('combobox', { name: 'Search' }).press('Enter');
+    // Aguardar o formulário ser carregado completamente
+    console.log('Aguardando o formulário de ocorrência ser carregado...');
+    await page.waitForTimeout(2000);
+    
+    try {
+      // Selecionar responsável usando o seletor correto
+      console.log('Clicando no dropdown de responsável...');
+      await page.locator('button.btn.dropdown-toggle[data-id="cod_usuario"]').click();
+      
+      // Aguardar o dropdown abrir
+      await page.waitForTimeout(2000);
+      
+      // Tentar clicar diretamente no item da lista que contém o texto do responsável
+      console.log(`Tentando selecionar diretamente o responsável: ${responsavel}`);
+      
+      // Verificar se o item existe na lista e clicar nele
+      const itemExists = await page.evaluate((texto) => {
+        // Normalizar o texto para comparação (remover acentos, converter para minúsculas)
+        const normalizeText = (str: string) => str.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const normalizedSearch = normalizeText(texto);
+        
+        // Buscar todos os itens da lista
+        const items = Array.from(document.querySelectorAll('.dropdown-menu li'));
+        
+        // Encontrar o item que contém o texto
+        for (const item of items) {
+          const itemText = normalizeText(item.textContent || '');
+          if (itemText.includes(normalizedSearch)) {
+            // Clicar no item
+            item.querySelector('a')?.click();
+            return true;
+          }
+        }
+        return false;
+      }, responsavel);
+      
+      if (itemExists) {
+        console.log('Responsável selecionado com sucesso via JavaScript');
+      } else {
+        console.log('Não foi possível encontrar o responsável na lista. Tentando outras abordagens...');
+        
+        // Tentar clicar usando seletores Playwright
+        try {
+          // Tentar várias abordagens de seletores
+          const seletores = [
+            `li a:text("${responsavel}")`,
+            `li:has-text("${responsavel}")`,
+            `.dropdown-menu li:has-text("${responsavel}")`,
+            `.dropdown-menu li a:has-text("${responsavel}")`
+          ];
+          
+          for (const seletor of seletores) {
+            try {
+              console.log(`Tentando seletor: ${seletor}`);
+              await page.locator(seletor).first().click({ timeout: 2000 });
+              console.log(`Seletor ${seletor} funcionou!`);
+              break;
+            } catch (err) {
+              console.log(`Seletor ${seletor} falhou`);
+            }
+          }
+        } catch (err) {
+          console.log('Todas as tentativas de seleção falharam');
+        }
+      }
+      
+      // Aguardar um momento para a seleção ser aplicada
+      await page.waitForTimeout(2000);
+    } catch (selectError) {
+      console.error('Erro ao selecionar responsável:', selectError);
+      // Continuar mesmo com erro na seleção de responsável
+    }
     
     // Preencher observação no editor de texto
     const frameLocator = page.locator('iframe[title="Área Rich Text\\. Aperte ALT-0 para ajuda\\."]');
