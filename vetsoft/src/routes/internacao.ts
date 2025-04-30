@@ -43,11 +43,6 @@ router.get('/', async (req, res) => {
     // Obter página já logada e navegada para a página de internação
     const page = await navigateToInternacao(headless, forceRefresh);
     
-    // Capturar screenshot para debug
-    await page.screenshot({ path: 'internacao-screenshot.png' });
-    console.log('Screenshot salvo em internacao-screenshot.png');
-    
-    // Extrair dados da tabela de internações
     console.log('Extraindo dados de internações...');
     const internacoes: Internacao[] = await page.evaluate(() => {
       // Selecionar todos os itens de internação, excluindo os alojamentos vazios
@@ -256,10 +251,6 @@ router.get('/:id', async (req, res) => {
     await page.click(fichaSelector);
     await page.waitForLoadState('networkidle');
     console.log('Página de detalhes carregada');
-    
-    // Capturar screenshot da ficha para debug
-    await page.screenshot({ path: `ficha-internacao-${animalId}.png` });
-    console.log(`Screenshot da ficha salvo em ficha-internacao-${animalId}.png`);
     
     // Extrair detalhes completos da ficha de internação
     console.log('Extraindo detalhes da ficha de internação...');

@@ -78,10 +78,6 @@ router.post('/', async (req, res) => {
     // Navegar para a página da ficha de internação
     const page = await navigateToFichaInternacao(cod_animal, cod_internacao, headless);
     
-    // Capturar screenshot para debug
-    await page.screenshot({ path: 'passagem-plantao-screenshot.png' });
-    console.log('Screenshot salvo em passagem-plantao-screenshot.png');
-    
     // Inserir passagem de plantão
     console.log('Inserindo passagem de plantão...');
     

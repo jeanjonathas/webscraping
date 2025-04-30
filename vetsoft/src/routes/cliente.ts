@@ -101,12 +101,10 @@ router.get('/:id', async (req, res) => {
     const showBrowser = req.query.show === 'true';
     const headless = !showBrowser;
     
-    // Navegar para a página da ficha do cliente
+    // Navegar para a página de ficha do cliente
     const page = await navigateToClienteFicha(codCliente, headless);
     
-    // Capturar screenshot para debug
-    await page.screenshot({ path: 'cliente-screenshot.png' });
-    console.log('Screenshot salvo em cliente-screenshot.png');
+    console.log(`Extraindo dados do cliente ${codCliente}...`);
     
     // Extrair dados do cliente da página
     console.log('Extraindo dados do cliente...');

@@ -58,12 +58,10 @@ router.get('/ano/:ano', async (req, res) => {
     // Verificar se deve forçar a atualização da página
     const forceRefresh = req.query.refresh === 'true';
     
-    // Navegar para a página de relatórios de animais com o ano especificado
+    // Navegar para a página de relatório de animais
     const page = await navigateToRelatorioAnimais(headless, forceRefresh, ano);
     
-    // Capturar screenshot para debug
-    await page.screenshot({ path: `animais-${ano}-screenshot.png` });
-    console.log(`Screenshot salvo em animais-${ano}-screenshot.png`);
+    console.log(`Extraindo dados de animais para o ano ${ano}...`);
     
     // Extrair dados da tabela de animais
     console.log('Extraindo dados de animais...');
