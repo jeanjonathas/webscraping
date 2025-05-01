@@ -12,6 +12,10 @@ let browserStartTime: number = Date.now();
 let loginAttempts: number = 0;
 let navigationAttempts: number = 0;
 
+// Controle de diálogos
+let isHandlingDialog = false;
+let dialogHandledTimestamp = 0;
+
 // Número máximo de tentativas de login e navegação
 const MAX_LOGIN_ATTEMPTS = 3;
 const MAX_NAVIGATION_ATTEMPTS = 3;
@@ -90,14 +94,25 @@ export async function getPage(headless: boolean = false): Promise<Page> {
     // Configurar listener para tratar diálogos (alerts, confirms, prompts)
     page.on('dialog', async dialog => {
       const message = dialog.message();
-      console.log(`Diálogo detectado: ${dialog.type()}, mensagem: ${message}`);
+      const currentTime = Date.now();
       
-      // Verificar se é o alerta de sessão expirada
-      if (message.includes('usuário está logado em outro navegador') || 
-          message.includes('sessão foi finalizada')) {
-        console.log('Detectado alerta de sessão expirada em outro navegador');
-        
-        try {
+      // Evitar processar o mesmo diálogo várias vezes
+      // Só processa se não estiver tratando outro diálogo ou se já passou tempo suficiente
+      if (isHandlingDialog && currentTime - dialogHandledTimestamp < 1000) {
+        console.log('Ignorando diálogo duplicado (já está sendo tratado)');
+        return;
+      }
+      
+      console.log(`Diálogo detectado: ${dialog.type()}, mensagem: ${message}`);
+      isHandlingDialog = true;
+      dialogHandledTimestamp = currentTime;
+      
+      try {
+        // Verificar se é o alerta de sessão expirada
+        if (message.includes('usuário está logado em outro navegador') || 
+            message.includes('sessão foi finalizada')) {
+          console.log('Detectado alerta de sessão expirada em outro navegador');
+          
           // Aceitar o diálogo
           await dialog.accept();
           console.log('Diálogo aceito automaticamente');
@@ -106,20 +121,35 @@ export async function getPage(headless: boolean = false): Promise<Page> {
           isLoggedIn = false;
           
           // Resetar a sessão (fechar e recriar o navegador)
-          await resetSession();
-        } catch (error) {
-          console.error('Erro ao tentar aceitar diálogo:', error);
-          // Se não conseguir aceitar o diálogo, forçar o fechamento do navegador
-          await closeBrowser();
-        }
-      } else {
-        // Para outros tipos de diálogos, apenas aceitar
-        try {
+          // Usando setTimeout para evitar problemas de concorrência
+          setTimeout(async () => {
+            try {
+              await resetSession();
+            } catch (error) {
+              console.error('Erro ao resetar sessão após diálogo:', error);
+            } finally {
+              isHandlingDialog = false;
+            }
+          }, 500);
+        } else {
+          // Para outros tipos de diálogos, apenas aceitar
           await dialog.accept();
           console.log('Diálogo aceito automaticamente');
-        } catch (error) {
-          console.error('Erro ao tentar aceitar diálogo:', error);
+          isHandlingDialog = false;
         }
+      } catch (error) {
+        console.error('Erro ao tentar aceitar diálogo:', error);
+        isHandlingDialog = false;
+        
+        // Se não conseguir aceitar o diálogo, tentar fechar o navegador
+        // mas não imediatamente para evitar problemas de concorrência
+        setTimeout(async () => {
+          try {
+            await closeBrowser();
+          } catch (closeError) {
+            console.error('Erro ao fechar navegador após falha no diálogo:', closeError);
+          }
+        }, 1000);
       }
     });
     
