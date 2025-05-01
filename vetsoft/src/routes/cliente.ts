@@ -111,6 +111,27 @@ router.get('/:id', async (req, res) => {
           }
         }
         
+        // Aguardar um tempo adicional para garantir que todos os dados sejam carregados
+        console.log('Aguardando carregamento completo dos dados do cliente...');
+        await page.waitForTimeout(3000); // Aguardar 3 segundos
+        
+        // Verificar se há elementos de carregamento visíveis e aguardar que desapareçam
+        const hasLoadingOverlay = await page.locator('.loadingoverlay').isVisible();
+        if (hasLoadingOverlay) {
+          console.log('Detectado overlay de carregamento, aguardando finalizar...');
+          await page.waitForSelector('.loadingoverlay', { state: 'hidden', timeout: 10000 }).catch(e => {
+            console.warn('Timeout aguardando overlay de carregamento desaparecer:', e);
+          });
+        }
+        
+        // Verificar se há requisições AJAX em andamento
+        await page.waitForFunction(() => {
+          // @ts-ignore - Verificar se o jQuery está disponível e se há requisições AJAX ativas
+          return !window.jQuery || jQuery.active === 0;
+        }, { timeout: 10000 }).catch(e => {
+          console.warn('Timeout aguardando requisições AJAX completarem:', e);
+        });
+        
         console.log(`Extraindo dados do cliente ${codCliente}...`);
         
         // Extrair dados do cliente da página
