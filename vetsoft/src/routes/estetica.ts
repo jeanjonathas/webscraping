@@ -127,7 +127,7 @@ router.get('/', async (req, res) => {
         
         // Aguardar carregamento após selecionar o período (tempo maior)
         console.log('Aguardando carregamento completo dos dados...');
-        await page.waitForTimeout(5000); // Aumentado para 5 segundos
+        await page.waitForTimeout(2000); // Aumentado para 5 segundos
         
         // Verificar se a tabela de agendamentos foi carregada completamente
         const totalLinhasAtual = await page.evaluate(() => {
@@ -138,7 +138,7 @@ router.get('/', async (req, res) => {
         // Se houver menos de 10 linhas, aguardar mais tempo
         if (totalLinhasAtual < 10) {
           console.log('Poucos agendamentos encontrados, aguardando mais tempo...');
-          await page.waitForTimeout(5000); // Aguardar mais 5 segundos
+          await page.waitForTimeout(2000); // Aguardar mais 5 segundos
         }
         
         console.log('Extraindo dados dos agendamentos do mês atual...');
@@ -157,7 +157,7 @@ router.get('/', async (req, res) => {
         
         // Aguardar carregamento após selecionar o período (tempo maior)
         console.log('Aguardando carregamento completo dos dados do próximo mês...');
-        await page.waitForTimeout(5000); // Aumentado para 5 segundos
+        await page.waitForTimeout(2000); // Aumentado para 5 segundos
         
         // Verificar se a tabela de agendamentos foi carregada completamente
         const totalLinhasProximo = await page.evaluate(() => {
@@ -168,7 +168,7 @@ router.get('/', async (req, res) => {
         // Se houver menos de 10 linhas, aguardar mais tempo
         if (totalLinhasProximo < 10) {
           console.log('Poucos agendamentos encontrados no próximo mês, aguardando mais tempo...');
-          await page.waitForTimeout(5000); // Aguardar mais 5 segundos
+          await page.waitForTimeout(2000); // Aguardar mais 5 segundos
         }
         
         console.log('Extraindo dados dos agendamentos do próximo mês...');
@@ -179,13 +179,38 @@ router.get('/', async (req, res) => {
         const datasProximo = agendamentosProximo.map(a => a.data);
         console.log('Datas encontradas no próximo mês:', [...new Set(datasProximo)].sort());
         
+        // Normalizar as datas de todos os agendamentos antes de combinar
+        console.log('Normalizando datas dos agendamentos...');
+        
+        // Normalizar datas do mês atual
+        agendamentosAtual = agendamentosAtual.map(agendamento => {
+          // Adicionar o ano atual às datas no formato abreviado (DD/MM)
+          if (agendamento.data.split('/').length === 2) {
+            const anoAtual = new Date().getFullYear();
+            agendamento.data = `${agendamento.data}/${anoAtual}`;
+            console.log(`Data normalizada: ${agendamento.data}`);
+          }
+          return agendamento;
+        });
+        
+        // Normalizar datas do próximo mês
+        agendamentosProximo = agendamentosProximo.map(agendamento => {
+          // Adicionar o ano atual às datas no formato abreviado (DD/MM)
+          if (agendamento.data.split('/').length === 2) {
+            const anoAtual = new Date().getFullYear();
+            agendamento.data = `${agendamento.data}/${anoAtual}`;
+            console.log(`Data normalizada: ${agendamento.data}`);
+          }
+          return agendamento;
+        });
+        
         // Combinar todos os agendamentos para filtragem posterior
         todosAgendamentos = [...agendamentosAtual, ...agendamentosProximo];
         
         // Exibir log dos agendamentos combinados
-        console.log(`Total combinado: ${todosAgendamentos.length} agendamentos`);
+        console.log(`Total combinado após normalização: ${todosAgendamentos.length} agendamentos`);
         const datasTodos = todosAgendamentos.map(a => a.data);
-        console.log('Todas as datas encontradas:', [...new Set(datasTodos)].sort());
+        console.log('Todas as datas normalizadas:', [...new Set(datasTodos)].sort());
         
         // Filtrar conforme o período selecionado
         if (periodoTipo === 'atual') {
@@ -272,11 +297,29 @@ router.get('/', async (req, res) => {
 });
 
 /**
- * Função auxiliar para converter uma string de data no formato DD/MM/YYYY para um objeto Date
+ * Função auxiliar para converter uma string de data no formato DD/MM/YYYY ou DD/MM para um objeto Date
  */
 const converterDataParaDate = (dataStr: string): Date | null => {
   try {
-    const [dia, mes, ano] = dataStr.split('/').map(Number);
+    const partes = dataStr.split('/');
+    
+    // Verificar o formato da data
+    if (partes.length < 2) {
+      console.error(`Formato de data inválido: ${dataStr}`);
+      return null;
+    }
+    
+    const dia = parseInt(partes[0], 10);
+    const mes = parseInt(partes[1], 10);
+    
+    // Se a data estiver no formato abreviado (DD/MM), usar o ano atual
+    let ano = new Date().getFullYear();
+    if (partes.length > 2 && partes[2].length > 0) {
+      ano = parseInt(partes[2], 10);
+    }
+    
+    console.log(`Convertendo data: ${dataStr} para ${dia}/${mes}/${ano}`);
+    
     // Mês em JavaScript é 0-indexed (0-11)
     return new Date(ano, mes - 1, dia);
   } catch (error) {
@@ -439,8 +482,7 @@ const extrairAgendamentos = async (page: any): Promise<AgendamentoEstetica[]> =>
           recorrencia: {
             tipo: tipoRecorrencia,
             progresso: progressoRecorrencia
-          },
-          observacoes: dadosAdicionais.json_adicional_animal?.estetica?.obs_estetica || undefined
+          }
         };
         
         listaAgendamentos.push(agendamento);
