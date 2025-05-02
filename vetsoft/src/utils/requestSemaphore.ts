@@ -8,9 +8,16 @@ let isLocked = false;
 let currentOperation = '';
 let queueSize = 0;
 let operationStartTime: number | null = null;
+let lastActivityTime: number | null = null;
+
+// Conjunto para rastrear operações únicas na fila
+let waitingOperations = new Set<string>();
 
 // Tempo máximo (em ms) que uma operação pode manter o bloqueio
-const MAX_LOCK_TIME = 5 * 60 * 1000; // 5 minutos
+const MAX_LOCK_TIME = 90 * 1000; // 1 minuto e meio
+
+// Tempo máximo (em ms) de inatividade antes de considerar uma operação travada
+const MAX_INACTIVITY_TIME = 2 * 60 * 1000; // 2 minutos
 
 /**
  * Tenta adquirir o bloqueio para uma operação
@@ -20,14 +27,27 @@ const MAX_LOCK_TIME = 5 * 60 * 1000; // 5 minutos
 export async function acquireLock(operation: string): Promise<boolean> {
   // Se o semáforo já está bloqueado
   if (isLocked) {
-    // Verificar se o bloqueio atual está ativo há muito tempo
-    if (operationStartTime && (Date.now() - operationStartTime > MAX_LOCK_TIME)) {
-      console.warn(`Forçando liberação do bloqueio após timeout. Operação anterior: ${currentOperation}`);
+    const now = Date.now();
+    
+    // Verificar se o bloqueio atual está ativo há muito tempo (timeout absoluto)
+    if (operationStartTime && (now - operationStartTime > MAX_LOCK_TIME)) {
+      console.warn(`Forçando liberação do bloqueio após timeout absoluto (${MAX_LOCK_TIME/60000} minutos). Operação anterior: ${currentOperation}`);
+      releaseLock(currentOperation);
+    } 
+    // Verificar se não há atividade há muito tempo (timeout de inatividade)
+    else if (lastActivityTime && (now - lastActivityTime > MAX_INACTIVITY_TIME)) {
+      console.warn(`Forçando liberação do bloqueio após ${MAX_INACTIVITY_TIME/60000} minutos sem atividade. Operação anterior: ${currentOperation}`);
       releaseLock(currentOperation);
     } else {
-      // Incrementar o tamanho da fila
-      queueSize++;
-      console.log(`Semáforo bloqueado por "${currentOperation}". "${operation}" aguardando na fila. Tamanho da fila: ${queueSize}`);
+      // Verificar se esta operação já está na fila
+      if (!waitingOperations.has(operation)) {
+        // Adicionar a operação à fila e incrementar o contador
+        waitingOperations.add(operation);
+        queueSize++;
+        console.log(`Semáforo bloqueado por "${currentOperation}". "${operation}" adicionada à fila. Tamanho da fila: ${queueSize}`);
+      } else {
+        console.log(`Semáforo bloqueado por "${currentOperation}". "${operation}" já está aguardando na fila. Tamanho da fila: ${queueSize}`);
+      }
       return false;
     }
   }
@@ -35,7 +55,15 @@ export async function acquireLock(operation: string): Promise<boolean> {
   // Adquirir o bloqueio
   isLocked = true;
   currentOperation = operation;
-  operationStartTime = Date.now();
+  const now = Date.now();
+  operationStartTime = now;
+  lastActivityTime = now;
+  
+  // Remover a operação da lista de espera, se estiver lá
+  if (waitingOperations.has(operation)) {
+    waitingOperations.delete(operation);
+  }
+  
   console.log(`Semáforo adquirido por "${operation}"`);
   return true;
 }
@@ -52,9 +80,9 @@ export function releaseLock(operation: string): boolean {
     currentOperation = '';
     operationStartTime = null;
     
-    // Decrementar o tamanho da fila se houver requisições aguardando
-    if (queueSize > 0) {
-      queueSize--;
+    // Remover a operação da lista de espera, se estiver lá
+    if (waitingOperations.has(operation)) {
+      waitingOperations.delete(operation);
     }
     
     console.log(`Semáforo liberado por "${operation}". Requisições aguardando: ${queueSize}`);
@@ -73,16 +101,31 @@ export function isLockActive(): boolean {
 }
 
 /**
+ * Registra atividade para a operação atual
+ * Isso evita que o semáforo seja liberado por inatividade se a operação estiver fazendo progresso
+ */
+export function registerActivity() {
+  if (isLocked) {
+    lastActivityTime = Date.now();
+    console.log(`Atividade registrada para operação "${currentOperation}"`);
+  }
+}
+
+/**
  * Retorna informações sobre o estado atual do semáforo
  * @returns Objeto com informações sobre o estado do semáforo
  */
 export function getSemaphoreStatus() {
+  const now = Date.now();
   return {
     isLocked,
     currentOperation,
     queueSize,
+    waitingOperations: Array.from(waitingOperations),
     operationStartTime,
-    elapsedTime: operationStartTime ? Math.floor((Date.now() - operationStartTime) / 1000) + 's' : null
+    lastActivityTime,
+    elapsedTime: operationStartTime ? Math.floor((now - operationStartTime) / 1000) + 's' : null,
+    inactiveTime: lastActivityTime ? Math.floor((now - lastActivityTime) / 1000) + 's' : null
   };
 }
 
@@ -114,12 +157,14 @@ export async function withLock<T>(operation: string, fn: () => Promise<T>): Prom
  * @param operation Nome da operação
  * @param fn Função a ser executada com o bloqueio
  * @param maxWaitTime Tempo máximo (em ms) para aguardar o bloqueio
+ * @param activityCheckInterval Intervalo (em ms) para registrar atividade
  * @returns Resultado da função
  */
 export async function withLockWait<T>(
   operation: string, 
   fn: () => Promise<T>, 
-  maxWaitTime: number = 60000
+  maxWaitTime: number = 60000,
+  activityCheckInterval: number = 10000 // 10 segundos
 ): Promise<T> {
   const startTime = Date.now();
   
@@ -135,10 +180,24 @@ export async function withLockWait<T>(
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
   
+  // Configurar um intervalo para registrar atividade periodicamente
+  // Isso evita que o semáforo seja liberado por inatividade durante operações longas
+  const activityInterval = setInterval(() => {
+    if (isLocked && currentOperation === operation) {
+      registerActivity();
+    }
+  }, activityCheckInterval);
+  
   try {
     // Executar a função com o bloqueio
     return await fn();
+  } catch (error) {
+    console.error(`Erro durante execução da operação "${operation}":`, error);
+    throw error;
   } finally {
+    // Limpar o intervalo de atividade
+    clearInterval(activityInterval);
+    
     // Garantir que o bloqueio seja liberado mesmo em caso de erro
     releaseLock(operation);
   }
