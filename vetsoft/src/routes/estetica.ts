@@ -1,6 +1,7 @@
 import { Router } from 'express';
-import { ensureLoggedIn } from '../utils/browserSession';
+import { ensureLoggedIn, resetSession } from '../utils/browserSession';
 import { withLockWait } from '../utils/requestSemaphore';
+import { Page } from 'playwright';
 
 const router = Router();
 
@@ -90,7 +91,7 @@ router.get('/', async (req, res) => {
     // IMPORTANTE: Obter uma página com login já feito ANTES de adquirir o semáforo principal
     // Isso evita deadlock entre os semáforos
     console.log('Obtendo página com login já feito (antes do semáforo principal)...');
-    const page = await ensureLoggedIn(headless);
+    let page = await ensureLoggedIn(headless);
     
     // Agora usar o sistema de semáforo para garantir acesso exclusivo ao navegador
     console.log(`Adquirindo semáforo para operação de agendamentos de estética...`);
@@ -98,11 +99,40 @@ router.get('/', async (req, res) => {
       try {
         console.log('Navegando para a página de estética...');
         
-        // Navegar para a página de estética
-        await page.goto('https://dranimal.vetsoft.com.br/m/estetica/', {
-          waitUntil: 'networkidle',
-          timeout: 30000
-        });
+        // Função para tentar navegar com retry
+        const navigateToEstetica = async (retryCount = 0): Promise<Page> => {
+          try {
+            // Navegar para a página de estética
+            await page.goto('https://dranimal.vetsoft.com.br/m/estetica/', {
+              waitUntil: 'networkidle',
+              timeout: 30000
+            });
+            return page;
+          } catch (error: any) {
+            // Se o erro for relacionado ao navegador fechado e ainda temos tentativas
+            if ((error.message.includes('Target page, context or browser has been closed') || 
+                error.message.includes('Target closed') ||
+                error.message.includes('Browser has been closed')) && 
+                retryCount < 3) {
+              console.log(`Navegador fechado detectado. Tentando reabrir (tentativa ${retryCount + 1}/3)...`);
+              
+              // Resetar a sessão e obter uma nova página
+              await resetSession();
+              const newPage = await ensureLoggedIn(headless);
+              page = newPage;
+              
+              // Tentar novamente com contador incrementado
+              return navigateToEstetica(retryCount + 1);
+            } else {
+              // Se excedeu as tentativas ou é outro tipo de erro, propagar o erro
+              throw error;
+            }
+          }
+        };
+        
+        // Tentar navegar com mecanismo de retry
+        const updatedPage = await navigateToEstetica();
+        page = updatedPage;
         
         console.log('Página de estética carregada');
         
@@ -141,8 +171,8 @@ router.get('/', async (req, res) => {
           await page.waitForTimeout(2000); // Aguardar mais 5 segundos
         }
         
-        console.log('Extraindo dados dos agendamentos do mês atual...');
-        agendamentosAtual = await extrairAgendamentos(page);
+        console.log('Extraindo agendamentos do mês atual...');
+        agendamentosAtual = await extrairAgendamentosDaTabela(page, headless);
         
         // Exibir log detalhado dos agendamentos do mês atual
         console.log(`Mês atual: Encontrados ${agendamentosAtual.length} agendamentos`);
@@ -152,10 +182,42 @@ router.get('/', async (req, res) => {
         // Sempre extrair o próximo mês também, para ter todos os dados disponíveis para filtragem
         console.log('Navegando para o próximo mês...');
         
-        // Clicar no botão para ir para o próximo mês (usando o botão de navegação)
-        await page.getByRole('button').filter({ has: page.locator('i.fas.fa-chevron-right') }).click();
+        // Função para navegar para o próximo mês com retry
+        const navigateToNextMonth = async (retryCount = 0): Promise<void> => {
+          try {
+            // Clicar no botão para ir para o próximo mês (usando o botão de navegação)
+            await page.getByRole('button').filter({ has: page.locator('i.fas.fa-chevron-right') }).click();
+            
+            // Aguardar carregamento após selecionar o período (tempo maior)
+            await page.waitForTimeout(2000);
+          } catch (error: any) {
+            // Se o erro for relacionado ao navegador fechado e ainda temos tentativas
+            if ((error.message.includes('Target page, context or browser has been closed') || 
+                error.message.includes('Target closed') ||
+                error.message.includes('Browser has been closed')) && 
+                retryCount < 3) {
+              console.log(`Navegador fechado detectado ao navegar para o próximo mês. Tentando reabrir (tentativa ${retryCount + 1}/3)...`);
+              
+              // Resetar a sessão e obter uma nova página
+              await resetSession();
+              const newPage = await ensureLoggedIn(headless);
+              page = newPage;
+              
+              // Navegar novamente para a página de estética
+              await navigateToEstetica();
+              
+              // Tentar navegar para o próximo mês novamente
+              return navigateToNextMonth(retryCount + 1);
+            } else {
+              // Se excedeu as tentativas ou é outro tipo de erro, propagar o erro
+              throw error;
+            }
+          }
+        };
         
-        // Aguardar carregamento após selecionar o período (tempo maior)
+        // Navegar para o próximo mês com mecanismo de retry
+        await navigateToNextMonth();
+        
         console.log('Aguardando carregamento completo dos dados do próximo mês...');
         await page.waitForTimeout(2000); // Aumentado para 5 segundos
         
@@ -171,8 +233,8 @@ router.get('/', async (req, res) => {
           await page.waitForTimeout(2000); // Aguardar mais 5 segundos
         }
         
-        console.log('Extraindo dados dos agendamentos do próximo mês...');
-        agendamentosProximo = await extrairAgendamentos(page);
+        console.log('Extraindo agendamentos do próximo mês...');
+        agendamentosProximo = await extrairAgendamentosDaTabela(page, headless);
         
         // Exibir log detalhado dos agendamentos do próximo mês
         console.log(`Próximo mês: Encontrados ${agendamentosProximo.length} agendamentos`);
@@ -271,9 +333,24 @@ router.get('/', async (req, res) => {
       } catch (error: any) {
         console.error('Erro ao extrair agendamentos de estética:', error);
         
+        // Verificar se o erro está relacionado ao navegador fechado
+        if (error.message.includes('Target page, context or browser has been closed') || 
+            error.message.includes('Target closed') ||
+            error.message.includes('Browser has been closed')) {
+          console.log('Erro de navegador fechado detectado. Resetando sessão para futuras requisições...');
+          
+          // Resetar a sessão para que futuras requisições possam funcionar
+          try {
+            await resetSession();
+          } catch (resetError) {
+            console.error('Erro ao resetar sessão:', resetError);
+          }
+        }
+        
         return {
           success: false,
-          error: `Erro ao extrair agendamentos: ${error.message}`
+          error: `Erro ao extrair agendamentos: ${error.message}`,
+          tipo_erro: error.message.includes('Target page, context or browser has been closed') ? 'navegador_fechado' : 'outro'
         };
       }
     }, 180000); // 3 minutos de timeout
@@ -329,11 +406,13 @@ const converterDataParaDate = (dataStr: string): Date | null => {
 }
 
 /**
- * Função auxiliar para extrair os agendamentos da página atual
- * Não filtra por data, extrai todos os agendamentos da página
+ * Função auxiliar para extrair os agendamentos da tabela com retry
+ * Extrai todos os agendamentos da página atual e implementa mecanismo de retry em caso de falha
  */
-const extrairAgendamentos = async (page: any): Promise<AgendamentoEstetica[]> => {
-  return await page.evaluate(() => {
+async function extrairAgendamentosDaTabela(page: Page, headless: boolean = false, retryCount = 0): Promise<AgendamentoEstetica[]> {
+  try {
+    // Extrair todos os agendamentos da tabela
+    return await page.evaluate(() => {
     const listaAgendamentos: AgendamentoEstetica[] = [];
     
     // Selecionar todas as linhas da tabela de agendamentos
@@ -493,6 +572,34 @@ const extrairAgendamentos = async (page: any): Promise<AgendamentoEstetica[]> =>
     
     return listaAgendamentos;
   });
+  } catch (error: any) {
+    // Se o erro for relacionado ao navegador fechado e ainda temos tentativas
+    if ((error.message.includes('Target page, context or browser has been closed') || 
+        error.message.includes('Target closed') ||
+        error.message.includes('Browser has been closed')) && 
+        retryCount < 3) {
+      console.log(`Navegador fechado detectado ao extrair agendamentos. Tentando reabrir (tentativa ${retryCount + 1}/3)...`);
+      
+      // Resetar a sessão e obter uma nova página
+      await resetSession();
+      const newPage = await ensureLoggedIn(headless);
+      
+      // Navegar novamente para a página de estética
+      await newPage.goto('https://dranimal.vetsoft.com.br/m/estetica/', {
+        waitUntil: 'networkidle',
+        timeout: 30000
+      });
+      
+      // Aguardar carregamento
+      await newPage.waitForTimeout(2000);
+      
+      // Tentar extrair novamente
+      return extrairAgendamentosDaTabela(newPage, headless, retryCount + 1);
+    } else {
+      // Se excedeu as tentativas ou é outro tipo de erro, propagar o erro
+      throw error;
+    }
+  }
 }
 
 export default router;
