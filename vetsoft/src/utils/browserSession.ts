@@ -49,7 +49,8 @@ export async function getBrowser(headless: boolean = false): Promise<Browser> {
     console.log('Iniciando nova instância do navegador...');
     browser = await chromium.launch({
       headless: headless,
-      slowMo: headless ? 0 : 50 // Adiciona atraso apenas se não for headless
+      slowMo: headless ? 0 : 50, // Adiciona atraso apenas se não for headless
+      args: headless ? [] : ['--start-maximized'] // Maximiza a janela quando não for headless
     });
     isLoggedIn = false;
     browserStartTime = Date.now();
