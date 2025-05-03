@@ -34,11 +34,11 @@ services:
       echo 'Iniciando servidor...' &&
       NODE_ENV=production npm run start"
     environment:
-      - VETSOFT_USERNAME=jeanvet
+      - VETSOFT_USERNAME=supervet
       - VETSOFT_PASSWORD=Je@nfree16
       - SERVER_PORT=3000
-      - SUPABASE_URL=https://supabase.supervet.app
-      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogInNlcnZpY2Vfcm9sZSIsCiAgImlzcyI6ICJzdXBhYmFzZSIsCiAgImlhdCI6IDE3MTUwNTA4MDAsCiAgImV4cCI6IDE4NzI4MTcyMDAKfQ.BepdiHaXIckUPHlX_SZyyCX5iizCKAxfmThdZME5YKc
+      - SUPABASE_URL=https://wmtozvpyyuuletkgkwpp.supabase.co
+      - SUPABASE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndtdG96dnB5eXV1bGV0a2drd3BwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYwNTQ0MTIsImV4cCI6MjA2MTYzMDQxMn0.__E208S6aQUdguojnWpdB53zt_qo0x-aE84ALgLMSro
       - NODE_ENV=production
       - DISPLAY=:99
       - API_KEY=Je@nfree2525
