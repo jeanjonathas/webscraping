@@ -19,6 +19,30 @@ const MAX_LOCK_TIME = 90 * 1000; // 1 minuto e meio
 // Tempo máximo (em ms) de inatividade antes de considerar uma operação travada
 const MAX_INACTIVITY_TIME = 2 * 60 * 1000; // 2 minutos
 
+// Verificar periodicamente se o semáforo está travado
+setInterval(() => {
+  if (isLocked) {
+    const now = Date.now();
+    
+    // Verificar se a operação está ativa há muito tempo
+    if (operationStartTime && now - operationStartTime > MAX_LOCK_TIME) {
+      console.log(`Forçando liberação do semáforo para operação "${currentOperation}" por tempo máximo excedido (${Math.floor((now - operationStartTime) / 1000)}s)`); 
+      isLocked = false;
+      currentOperation = '';
+      operationStartTime = null;
+      lastActivityTime = null;
+    }
+    // Verificar se a operação está inativa há muito tempo
+    else if (lastActivityTime && now - lastActivityTime > MAX_INACTIVITY_TIME) {
+      console.log(`Forçando liberação do semáforo para operação "${currentOperation}" por inatividade (${Math.floor((now - lastActivityTime) / 1000)}s)`);
+      isLocked = false;
+      currentOperation = '';
+      operationStartTime = null;
+      lastActivityTime = null;
+    }
+  }
+}, 10000); // Verificar a cada 10 segundos
+
 /**
  * Tenta adquirir o bloqueio para uma operação
  * @param operation Nome da operação que está tentando adquirir o bloqueio

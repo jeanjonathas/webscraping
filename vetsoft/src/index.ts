@@ -11,6 +11,7 @@ import clienteRouter from './routes/cliente';
 import passagemPlantaoRouter from './routes/passagem-plantao';
 import esteticaRouter from './routes/estetica';
 import buscaClienteRouter from './routes/busca-cliente';
+import buscaClienteResumidoRouter from './routes/busca-cliente-resumido';
 import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -88,6 +89,7 @@ app.use('/cliente', apiKeyAuth, clienteRouter);
 app.use('/passagem-plantao', apiKeyAuth, passagemPlantaoRouter);
 app.use('/estetica', apiKeyAuth, esteticaRouter);
 app.use('/busca-cliente', apiKeyAuth, buscaClienteRouter);
+app.use('/busca-cliente-resumido', apiKeyAuth, buscaClienteResumidoRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {

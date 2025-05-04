@@ -44,9 +44,13 @@ const checkInterval = setInterval(async () => {
 }, 60 * 1000); // Verificar a cada minuto
 
 // Função para inicializar o navegador se necessário
-export async function getBrowser(headless: boolean = false): Promise<Browser> {
+export async function getBrowser(showBrowser: boolean = false): Promise<Browser> {
+  // Se showBrowser for true, forçamos o modo não-headless
+  // Caso contrário, usamos a configuração do ambiente
+  const headless = showBrowser ? false : config.browser.headless;
+  
   if (!browser) {
-    console.log('Iniciando nova instância do navegador...');
+    console.log(`Iniciando nova instância do navegador (modo ${headless ? 'headless' : 'visível'})...`);
     browser = await chromium.launch({
       headless: headless,
       slowMo: headless ? 0 : 50, // Adiciona atraso apenas se não for headless
