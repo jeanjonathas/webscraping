@@ -10,6 +10,7 @@ import internacaoRouter from './routes/internacao';
 import clienteRouter from './routes/cliente';
 import passagemPlantaoRouter from './routes/passagem-plantao';
 import esteticaRouter from './routes/estetica';
+import buscaClienteRouter from './routes/busca-cliente';
 import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -18,7 +19,7 @@ import { createClient } from '@supabase/supabase-js';
 dotenv.config();
 
 const app = express();
-const port = process.env.SERVER_PORT || 3000;
+const port = process.env.PORT || 3001;
 
 // Configuração do Supabase
 const supabaseUrl = process.env.SUPABASE_URL || '';
@@ -86,6 +87,7 @@ app.use('/internacao', apiKeyAuth, internacaoRouter);
 app.use('/cliente', apiKeyAuth, clienteRouter);
 app.use('/passagem-plantao', apiKeyAuth, passagemPlantaoRouter);
 app.use('/estetica', apiKeyAuth, esteticaRouter);
+app.use('/busca-cliente', apiKeyAuth, buscaClienteRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {
