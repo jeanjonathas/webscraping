@@ -44,24 +44,17 @@ const checkInterval = setInterval(async () => {
 }, 60 * 1000); // Verificar a cada minuto
 
 // Função para inicializar o navegador se necessário
-export async function getBrowser(showBrowser: boolean = false): Promise<Browser> {
-  // Verificar se estamos em ambiente Docker (sem servidor X)
-  const isDocker = process.env.DOCKER_ENV === 'true' || process.env.CONTAINER_ENV === 'true';
-  
-  // Se showBrowser for true e não estamos em Docker, forçamos o modo não-headless
-  // Em Docker, sempre usamos headless para evitar erros de servidor X
-  // Caso contrário, usamos a configuração do ambiente
-  const headless = isDocker ? true : (showBrowser ? false : config.browser.headless);
-  
+export async function getBrowser(_showBrowser: boolean = false): Promise<Browser> {
+  // Ignorar parâmetro showBrowser e sempre usar headless
   if (!browser) {
-    console.log(`Iniciando nova instância do navegador (modo ${headless ? 'headless' : 'visível'})...`);
+    console.log('Iniciando nova instância do navegador (modo headless)...');
     browser = await chromium.launch({
-      headless: headless,
-      slowMo: headless ? 0 : 50, // Adiciona atraso apenas se não for headless
+      headless: true, // Forçar headless sempre
       args: [
         '--disable-dev-shm-usage', // Evita erros de memória compartilhada em Docker
         '--no-sandbox', // Necessário para Docker
-        ...(headless ? [] : ['--start-maximized']) // Maximiza a janela quando não for headless
+        '--disable-gpu', // Desativar aceleração de hardware
+        '--disable-setuid-sandbox' // Adicional para evitar problemas de permissão
       ]
     });
     isLoggedIn = false;
@@ -73,9 +66,9 @@ export async function getBrowser(showBrowser: boolean = false): Promise<Browser>
 }
 
 // Função para obter o contexto do navegador
-export async function getBrowserContext(headless: boolean = false): Promise<BrowserContext> {
+export async function getBrowserContext(_headless: boolean = false): Promise<BrowserContext> {
   if (!context) {
-    const browserInstance = await getBrowser(headless);
+    const browserInstance = await getBrowser(true); // Sempre usar headless
     console.log('Criando novo contexto do navegador...');
     context = await browserInstance.newContext();
     isLoggedIn = false;
@@ -86,9 +79,9 @@ export async function getBrowserContext(headless: boolean = false): Promise<Brow
 }
 
 // Função para obter a página atual ou criar uma nova
-export async function getPage(headless: boolean = false): Promise<Page> {
+export async function getPage(_headless: boolean = false): Promise<Page> {
   if (!page) {
-    const contextInstance = await getBrowserContext(headless);
+    const contextInstance = await getBrowserContext(true); // Sempre usar headless
     console.log('Criando nova página...');
     page = await contextInstance.newPage();
     
@@ -112,57 +105,61 @@ export async function getPage(headless: boolean = false): Promise<Page> {
       // Evitar processar o mesmo diálogo várias vezes
       // Só processa se não estiver tratando outro diálogo ou se já passou tempo suficiente
       if (isHandlingDialog && currentTime - dialogHandledTimestamp < 1000) {
-        console.log('Ignorando diálogo duplicado (já está sendo tratado)');
+        console.log(`Ignorando diálogo duplicado: "${message}"`);
         return;
       }
       
-      console.log(`Diálogo detectado: ${dialog.type()}, mensagem: ${message}`);
+      console.log(`Diálogo detectado: "${message}"`);
+      
+      // Marcar que estamos tratando um diálogo
       isHandlingDialog = true;
       dialogHandledTimestamp = currentTime;
       
       try {
-        // Verificar se é o alerta de sessão expirada
+        // Se for um alerta de sessão expirada ou usuário logado em outro navegador
         if (message.includes('usuário está logado em outro navegador') || 
             message.includes('sessão foi finalizada')) {
-          console.log('Detectado alerta de sessão expirada em outro navegador');
+          console.log('Detectado alerta de sessão expirada ou usuário logado em outro lugar');
           
           // Aceitar o diálogo
           await dialog.accept();
-          console.log('Diálogo aceito automaticamente');
+          console.log('Diálogo aceito');
           
-          // Marcar sessão como expirada
+          // Marcar a sessão como expirada
           isLoggedIn = false;
           
-          // Resetar a sessão (fechar e recriar o navegador)
-          // Usando setTimeout para evitar problemas de concorrência
+          // Usar setTimeout para evitar problemas de concorrência
           setTimeout(async () => {
             try {
+              // Resetar a sessão (fechar e recriar o navegador)
               await resetSession();
-            } catch (error) {
-              console.error('Erro ao resetar sessão após diálogo:', error);
+              console.log('Sessão resetada após alerta de usuário logado em outro navegador');
+            } catch (resetError) {
+              console.error('Erro ao resetar sessão após alerta:', resetError);
             } finally {
+              // Garantir que a flag seja liberada mesmo em caso de erro
               isHandlingDialog = false;
             }
           }, 500);
         } else {
           // Para outros tipos de diálogos, apenas aceitar
           await dialog.accept();
-          console.log('Diálogo aceito automaticamente');
+          console.log('Diálogo aceito (tipo genérico)');
           isHandlingDialog = false;
         }
-      } catch (error) {
-        console.error('Erro ao tentar aceitar diálogo:', error);
-        isHandlingDialog = false;
+      } catch (dialogError) {
+        console.error('Erro ao aceitar diálogo:', dialogError);
         
-        // Se não conseguir aceitar o diálogo, tentar fechar o navegador
-        // mas não imediatamente para evitar problemas de concorrência
-        setTimeout(async () => {
-          try {
-            await closeBrowser();
-          } catch (closeError) {
-            console.error('Erro ao fechar navegador após falha no diálogo:', closeError);
-          }
-        }, 1000);
+        // Em caso de erro ao aceitar o diálogo, forçar o fechamento do navegador
+        try {
+          await closeBrowser();
+          console.log('Navegador fechado após erro ao aceitar diálogo');
+        } catch (closeError) {
+          console.error('Erro ao fechar navegador após falha no diálogo:', closeError);
+        } finally {
+          // Garantir que a flag seja liberada mesmo em caso de erro
+          isHandlingDialog = false;
+        }
       }
     });
     
@@ -174,12 +171,12 @@ export async function getPage(headless: boolean = false): Promise<Page> {
 }
 
 // Função para verificar se está logado e fazer login se necessário
-export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
+export async function ensureLoggedIn(_headless: boolean = false): Promise<Page> {
   const operationId = `login-${Date.now()}`;
   
   return withLockWait(operationId, async () => {
-    // Obter a página atual ou criar uma nova
-    const currentPage = await getPage(headless);
+    // Obter a página atual ou criar uma nova - sempre em modo headless
+    const currentPage = await getPage(true);
     
     // Se não estiver logado, fazer login
     if (!isLoggedIn) {
@@ -242,14 +239,14 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
     return currentPage;
   }, 120000); // Aguardar até 2 minutos pelo bloqueio
 }
-
 // Função para navegar para a página de internação
-export async function navigateToInternacao(headless: boolean = false, forceRefresh: boolean = false): Promise<Page> {
+export async function navigateToInternacao(forceRefresh: boolean = false): Promise<Page> {
   const operationId = `internacao-${Date.now()}`;
   
-  return withLockWait(operationId, async () => {
-    // Obter a página atual ou criar uma nova
-    const currentPage = await getPage(headless);
+  // IMPORTANTE: Obter uma página com login já feito ANTES de adquirir o semáforo principal
+  // Isso evita deadlock entre os semáforos
+  console.log('Obtendo página com login já feito (antes do semáforo principal)...');
+  let page = await ensureLoggedIn(true); // Forçar headless
     
     try {
       // Se já estiver logado, navegar diretamente para a URL de internação

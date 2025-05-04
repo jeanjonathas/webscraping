@@ -42,6 +42,8 @@ services:
       - NODE_ENV=production
       - DISPLAY=:99
       - API_KEY=Je@nfree2525
+      - DOCKER_ENV=true
+      - HEADLESS=true
     volumes:
       - vetsoft_data:/app
     networks:
