@@ -116,6 +116,38 @@ router.get('/', async (req: Request, res: Response) => {
           // Aguardar um tempo adicional para garantir que a página está estável
           await page.waitForTimeout(2000);
           
+          // Verificar se há resultados na página
+          const temResultados = await page.evaluate(() => {
+            // Verificar se há mensagem de "Nenhum registro encontrado"
+            const mensagemVazia = document.querySelector('.empty-grid');
+            if (mensagemVazia) {
+              return false;
+            }
+            
+            // Verificar se há linhas na tabela
+            return document.querySelectorAll('tbody tr[id^="grid_Cliente_row"]').length > 0;
+          });
+          
+          if (!temResultados) {
+            console.log('Nenhum resultado encontrado para o termo de busca');
+            // Em vez de retornar diretamente, definimos o responseData
+            responseData = {
+              success: true,
+              data: [],
+              numeroResultados: 0
+            };
+            
+            // Navegar para a página inicial para liberar o semáforo
+            console.log('Navegando para a página inicial para liberar o semáforo...');
+            await page.goto('https://dranimal.vetsoft.com.br/m/dashboard/', {
+              waitUntil: 'networkidle',
+              timeout: 30000
+            });
+            
+            // Retornar para sair da função sem continuar o processamento
+            return;
+          }
+          
           // Aguardar os resultados com o timeout configurado
           await page.waitForSelector('tbody tr[id^="grid_Cliente_row"]', { timeout });
           
