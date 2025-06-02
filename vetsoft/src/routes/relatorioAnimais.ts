@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { resetSession, getPage } from '../utils/browserSession';
+import { resetSession, getPage, ensureLoggedIn } from '../utils/browserSession';
 import { withLockWait } from '../utils/requestSemaphore';
 import { config } from '../config';
 import path from 'path';
@@ -79,6 +79,8 @@ async function navegarParaRelatorioAnimaisSemSemaforo(headless: boolean = true, 
       
       // Preencher credenciais
       console.log('Preenchendo credenciais...');
+      console.log(`Username disponível: ${config.vetsoft.username ? 'Sim' : 'Não'}`);
+      console.log(`Password disponível: ${config.vetsoft.password ? 'Sim' : 'Não'}`);
       await page.fill('input[name="user"]', config.vetsoft.username || '');
       await page.fill('input[name="pwd"]', config.vetsoft.password || '');
       
@@ -117,6 +119,7 @@ router.get('/', async (req, res) => {
   const dataFinal = req.query.dataFinal as string;
   const showBrowser = req.query.show === 'true';
   const forceRefresh = req.query.refresh === 'true';
+  const headless = !showBrowser;
   
   const operationId = `relatorio-animais-${Date.now()}`;
   
@@ -124,14 +127,28 @@ router.get('/', async (req, res) => {
   console.log(`Parâmetros: showBrowser=${showBrowser}, forceRefresh=${forceRefresh}`);
   
   try {
+    // IMPORTANTE: Obter uma página com login já feito ANTES de adquirir o semáforo principal
+    // Isso evita deadlock entre os semáforos
+    console.log('Obtendo página com login já feito (antes do semáforo principal)...');
+    const page = await ensureLoggedIn(headless);
+    
     // Usar o sistema de semáforo para garantir acesso exclusivo ao navegador durante toda a operação
     const result = await withLockWait<{ success: boolean; data?: AnimalCompleto[]; csv?: string; total?: number; error?: string }>(operationId, async () => {
       console.log(`Semáforo adquirido para ${operationId}, iniciando navegação...`);
       
-      // Navegar para a página de relatório de animais com o navegador visível se solicitado
+      // Navegar para a página de relatório de animais
       console.log(`Iniciando navegação com navegador ${showBrowser ? 'visível' : 'headless'}...`);
-      // Usar a função que não usa semáforo internamente para evitar deadlock
-      const page = await navegarParaRelatorioAnimaisSemSemaforo(showBrowser ? false : true, forceRefresh);
+      // Navegar para a página de relatórios
+      await page.goto('https://dranimal.vetsoft.com.br/m/relatorios/', { waitUntil: 'networkidle' });
+      await page.waitForTimeout(2000);
+      await page.getByRole('link', { name: 'Animais' }).click();
+      await page.waitForTimeout(2000);
+      await page.getByRole('link', { name: 'Lista de Animais' }).click();
+      await page.waitForTimeout(2000);
+      await page.getByRole('button', { name: ' Colunas' }).click();
+      await page.getByRole('checkbox', { name: '#' }).uncheck();
+      await page.getByRole('button', { name: '+ ' }).click();
+      await page.getByLabel('Visualizar').selectOption('3');
       console.log('Navegação concluída com sucesso, página carregada.');
       
       
