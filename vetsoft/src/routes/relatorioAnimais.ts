@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { resetSession, getPage } from '../utils/browserSession';
 import { withLockWait } from '../utils/requestSemaphore';
+import { config } from '../config';
 import path from 'path';
 
 // Variável para controlar o estado de login
@@ -78,8 +79,8 @@ async function navegarParaRelatorioAnimaisSemSemaforo(headless: boolean = true, 
       
       // Preencher credenciais
       console.log('Preenchendo credenciais...');
-      await page.fill('input[name="user"]', process.env.VETSOFT_USERNAME || '');
-      await page.fill('input[name="pwd"]', process.env.VETSOFT_PASSWORD || '');
+      await page.fill('input[name="user"]', config.vetsoft.username || '');
+      await page.fill('input[name="pwd"]', config.vetsoft.password || '');
       
       // Enviar formulário
       console.log('Credenciais enviadas, aguardando navegação...');
@@ -130,7 +131,7 @@ router.get('/', async (req, res) => {
       // Navegar para a página de relatório de animais com o navegador visível se solicitado
       console.log(`Iniciando navegação com navegador ${showBrowser ? 'visível' : 'headless'}...`);
       // Usar a função que não usa semáforo internamente para evitar deadlock
-      const page = await navegarParaRelatorioAnimaisSemSemaforo(!showBrowser, forceRefresh);
+      const page = await navegarParaRelatorioAnimaisSemSemaforo(showBrowser ? false : true, forceRefresh);
       console.log('Navegação concluída com sucesso, página carregada.');
       
       
@@ -511,7 +512,7 @@ router.get('/exportar-csv', async (req, res) => {
       
       // Navegar para a página de relatório de animais com o navegador visível se solicitado
       console.log(`Iniciando navegação com navegador ${showBrowser ? 'visível' : 'headless'}...`);
-      const page = await navegarParaRelatorioAnimaisSemSemaforo(!showBrowser, false);
+      const page = await navegarParaRelatorioAnimaisSemSemaforo(showBrowser ? false : true, false);
       console.log('Navegação concluída com sucesso, página carregada.');
       
       // Configurar o período de consulta
