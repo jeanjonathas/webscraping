@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exportar Relatório de Animais</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            padding-top: 30px;
+        }
+        .container {
+            max-width: 800px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #e9ecef;
+            padding-bottom: 20px;
+        }
+        .header h1 {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .btn-primary {
+            background-color: #3498db;
+            border-color: #3498db;
+        }
+        .btn-primary:hover {
+            background-color: #2980b9;
+            border-color: #2980b9;
+        }
+        .alert {
+            display: none;
+            margin-top: 20px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .loading img {
+            width: 50px;
+            height: 50px;
+        }
+        .card {
+            margin-top: 20px;
+            border: none;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+        }
+        .card-header {
+            background-color: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            font-weight: 600;
+        }
+        .option-card {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .option-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .option-card.selected {
+            border: 2px solid #3498db;
+        }
+        .date-inputs {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Exportar Relatório de Animais</h1>
+            <p class="text-muted">Selecione o período desejado e exporte os dados em formato CSV</p>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card option-card" data-option="atual" onclick="selectOption(this)">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Mês Atual</h5>
+                        <p class="card-text">Exportar dados do mês atual</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card option-card" data-option="proximo" onclick="selectOption(this)">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Próximo Mês</h5>
+                        <p class="card-text">Exportar dados do próximo mês</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card option-card" data-option="personalizado" onclick="selectOption(this)">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Período Personalizado</h5>
+                        <p class="card-text">Selecionar datas específicas</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="date-inputs" id="dateInputs">
+            <div class="card">
+                <div class="card-header">
+                    Selecione o Período
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="dataInicial">Data Inicial:</label>
+                                <input type="text" class="form-control" id="dataInicial" placeholder="DD/MM/AAAA">
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="dataFinal">Data Final:</label>
+                                <input type="text" class="form-control" id="dataFinal" placeholder="DD/MM/AAAA">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group mt-4">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="showBrowser">
+                <label class="form-check-label" for="showBrowser">
+                    Mostrar navegador durante a extração
+                </label>
+            </div>
+        </div>
+
+        <div class="d-grid gap-2">
+            <button class="btn btn-primary" id="exportButton" onclick="exportData()">Exportar Dados</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Carregando...</span>
+            </div>
+            <p class="mt-2">Extraindo dados, por favor aguarde...</p>
+        </div>
+
+        <div class="alert alert-success" id="successAlert">
+            Dados exportados com sucesso!
+        </div>
+
+        <div class="alert alert-danger" id="errorAlert">
+            Ocorreu um erro ao exportar os dados. Por favor, tente novamente.
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/pt.js"></script>
+    <script>
+        let selectedOption = 'atual';
+
+        // Inicializar o seletor de data
+        flatpickr("#dataInicial", {
+            dateFormat: "d/m/Y",
+            locale: "pt",
+            allowInput: true
+        });
+
+        flatpickr("#dataFinal", {
+            dateFormat: "d/m/Y",
+            locale: "pt",
+            allowInput: true
+        });
+
+        function selectOption(element) {
+            // Remover seleção anterior
+            document.querySelectorAll('.option-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+
+            // Adicionar seleção ao card clicado
+            element.classList.add('selected');
+            selectedOption = element.getAttribute('data-option');
+
+            // Mostrar/esconder inputs de data
+            if (selectedOption === 'personalizado') {
+                document.getElementById('dateInputs').style.display = 'block';
+            } else {
+                document.getElementById('dateInputs').style.display = 'none';
+            }
+        }
+
+        function exportData() {
+            // Mostrar loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('successAlert').style.display = 'none';
+            document.getElementById('errorAlert').style.display = 'none';
+
+            // Construir a URL da API
+            let apiUrl = '/relatorio-animais/exportar-csv?';
+            
+            if (selectedOption === 'personalizado') {
+                const dataInicial = document.getElementById('dataInicial').value;
+                const dataFinal = document.getElementById('dataFinal').value;
+                
+                if (!dataInicial || !dataFinal) {
+                    alert('Por favor, preencha as datas inicial e final.');
+                    document.getElementById('loading').style.display = 'none';
+                    return;
+                }
+                
+                apiUrl += `dataInicial=${dataInicial}&dataFinal=${dataFinal}`;
+            } else {
+                apiUrl += `periodo=${selectedOption}`;
+            }
+            
+            // Adicionar opção de mostrar navegador
+            if (document.getElementById('showBrowser').checked) {
+                apiUrl += '&show=true';
+            }
+
+            // Fazer a requisição para a API - download direto do CSV
+            const headers = new Headers();
+            headers.append('x-api-key', 'Je@nfree2525');
+            
+            // Criar um link para download direto
+            const downloadLink = document.createElement('a');
+            downloadLink.href = apiUrl;
+            downloadLink.setAttribute('download', `relatorio_animais_${formatDate(new Date())}.csv`);
+            
+            // Adicionar os headers à URL usando XMLHttpRequest
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', apiUrl, true);
+            // Usar a chave de API correta
+            xhr.setRequestHeader('x-api-key', 'Je@nfree2525');
+            xhr.responseType = 'blob';
+            
+            xhr.onload = function() {
+                if (this.status === 200) {
+                    const blob = new Blob([this.response], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `relatorio_animais_${formatDate(new Date())}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    
+                    // Mostrar mensagem de sucesso
+                    document.getElementById('successAlert').style.display = 'block';
+                } else {
+                    // Mostrar erro
+                    document.getElementById('errorAlert').style.display = 'block';
+                    document.getElementById('errorAlert').textContent = 'Erro ao exportar dados';
+                }
+                document.getElementById('loading').style.display = 'none';
+            };
+            
+            xhr.onerror = function() {
+                document.getElementById('errorAlert').style.display = 'block';
+                document.getElementById('errorAlert').textContent = 'Erro ao comunicar com o servidor';
+                document.getElementById('loading').style.display = 'none';
+            };
+            
+            xhr.send();
+            return;
+        }
+
+        function convertToCSV(data) {
+            if (!data || data.length === 0) {
+                return '';
+            }
+            
+            // Obter cabeçalhos
+            const headers = getHeaders(data[0]);
+            
+            // Criar linhas do CSV
+            const csvRows = [];
+            
+            // Adicionar cabeçalhos
+            csvRows.push(headers.join(';'));
+            
+            // Adicionar dados
+            for (const item of data) {
+                const values = headers.map(header => {
+                    // Tratar campos aninhados como tutor
+                    if (header.includes('.')) {
+                        const parts = header.split('.');
+                        let value = item;
+                        for (const part of parts) {
+                            value = value && value[part] ? value[part] : '';
+                        }
+                        return `"${value}"`;
+                    } else {
+                        const value = item[header] !== null && item[header] !== undefined ? item[header] : '';
+                        return `"${value}"`;
+                    }
+                });
+                csvRows.push(values.join(';'));
+            }
+            
+            return csvRows.join('\n');
+        }
+
+        function getHeaders(obj, prefix = '') {
+            let headers = [];
+            
+            for (const key in obj) {
+                if (key === 'dados_whatsapp') {
+                    // Ignorar dados_whatsapp para não duplicar informações
+                    continue;
+                }
+                
+                if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+                    // Para objetos aninhados como tutor
+                    const nestedHeaders = getHeaders(obj[key], prefix ? `${prefix}.${key}` : key);
+                    headers = [...headers, ...nestedHeaders];
+                } else {
+                    headers.push(prefix ? `${prefix}.${key}` : key);
+                }
+            }
+            
+            return headers;
+        }
+
+        function formatDate(date) {
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}_${month}_${year}`;
+        }
+
+        // Selecionar a opção padrão
+        document.querySelector('[data-option="atual"]').classList.add('selected');
+    </script>
+</body>
+</html>

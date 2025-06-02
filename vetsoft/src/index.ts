@@ -6,12 +6,15 @@ import cadastroRouter from './routes/cadastro';
 import animaisRouter from './routes/animais';
 import configRouter from './routes/config';
 import importacaoRouter from './routes/importacao';
+import importacaoTutoresRouter from './routes/importacaoTutores';
+import importacaoAnimaisRouter from './routes/importacaoAnimais';
 import internacaoRouter from './routes/internacao';
 import clienteRouter from './routes/cliente';
 import passagemPlantaoRouter from './routes/passagem-plantao';
 import esteticaRouter from './routes/estetica';
 import buscaClienteRouter from './routes/busca-cliente';
 import buscaClienteResumidoRouter from './routes/busca-cliente-resumido';
+import relatorioAnimaisRouter from './routes/relatorioAnimais';
 import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -82,14 +85,19 @@ app.set('json spaces', 2);
 app.use('/agendamentos', apiKeyAuth, agendamentosRouter);
 app.use('/cadastro', apiKeyAuth, cadastroRouter);
 app.use('/animais', apiKeyAuth, animaisRouter);
-app.use('/config', apiKeyAuth, configRouter);
 app.use('/importacao', apiKeyAuth, importacaoRouter);
+app.use('/importacao-tutores', apiKeyAuth, importacaoTutoresRouter);
+app.use('/importacao-animais', apiKeyAuth, importacaoAnimaisRouter);
 app.use('/internacao', apiKeyAuth, internacaoRouter);
 app.use('/cliente', apiKeyAuth, clienteRouter);
 app.use('/passagem-plantao', apiKeyAuth, passagemPlantaoRouter);
 app.use('/estetica', apiKeyAuth, esteticaRouter);
 app.use('/busca-cliente', apiKeyAuth, buscaClienteRouter);
 app.use('/busca-cliente-resumido', apiKeyAuth, buscaClienteResumidoRouter);
+app.use('/relatorio-animais', apiKeyAuth, relatorioAnimaisRouter);
+
+// Rotas de configuração (sem proteção de API Key)
+app.use('/config', configRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {
@@ -99,6 +107,16 @@ app.get('/exportar-animais', (_req, res) => {
 // Página para importar animais
 app.get('/importar-animais', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/importar-animais.html'));
+});
+
+// Página para importar tutores
+app.get('/importar-tutores', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/importar-tutores.html'));
+});
+
+// Página para exportar relatório de animais
+app.get('/exportar-relatorio-animais', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/exportar-relatorio-animais.html'));
 });
 
 // API para importação de clientes

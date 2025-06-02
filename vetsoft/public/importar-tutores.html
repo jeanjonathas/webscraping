@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Importar Tutores</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+  <style>
+    .drop-area {
+      border: 2px dashed #ccc;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+    .drop-area.highlight {
+      border-color: #3b82f6;
+      background-color: rgba(59, 130, 246, 0.05);
+    }
+    .progress-container {
+      width: 100%;
+      background-color: #e5e7eb;
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 8px;
+      background-color: #3b82f6;
+      width: 0%;
+      transition: width 0.3s ease;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+  <div class="container mx-auto p-4 max-w-4xl">
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800 mb-2">Importar Tutores</h1>
+      <p class="text-gray-600">Importe tutores a partir de um arquivo CSV para o banco de dados</p>
+    </header>
+
+    <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+      <h2 class="text-xl font-semibold mb-4">Instruções</h2>
+      <div class="space-y-2 text-gray-700">
+        <p>1. Prepare seu arquivo CSV com os campos conforme a estrutura do VetSoft:</p>
+        <div class="bg-gray-100 p-3 rounded-md overflow-x-auto">
+          <code>Cód.,Nome,CPF/CNPJ,Contatos,Endereço,Profissão,Cadastro,Atualização,Grupos,Animais,Origem,Situação</code>
+        </div>
+        <p>2. Apenas o campo <strong>Nome</strong> é obrigatório.</p>
+        <p>3. Os campos de data devem estar no formato DD/MM/AAAA.</p>
+        <p>4. Arraste o arquivo para a área abaixo ou clique para selecionar.</p>
+      </div>
+    </div>
+
+    <div class="bg-white rounded-lg shadow-md p-6">
+      <form id="uploadForm">
+        <div id="drop-area" class="drop-area mb-6">
+          <div class="mb-4">
+            <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+              <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H8m36-12h-4m-8 0H8m36-12h-4m-8 0H8m36-12h-4m-8 0H8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <p class="mt-1 text-sm text-gray-600">Arraste e solte o arquivo CSV aqui ou</p>
+          </div>
+          <input type="file" id="fileInput" accept=".csv" class="hidden">
+          <button type="button" id="selectFileBtn" class="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            Selecionar arquivo
+          </button>
+          <div id="fileInfo" class="mt-4 hidden">
+            <p class="text-sm text-gray-700">Arquivo selecionado: <span id="fileName" class="font-medium"></span></p>
+          </div>
+        </div>
+
+        <div id="progressContainer" class="mb-6 hidden">
+          <div class="flex justify-between mb-1">
+            <span class="text-sm font-medium text-gray-700">Progresso</span>
+            <span id="progressPercent" class="text-sm font-medium text-gray-700">0%</span>
+          </div>
+          <div class="progress-container">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+        </div>
+
+        <div id="importStats" class="mb-6 hidden">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-gray-100 p-4 rounded-md">
+              <p class="text-sm text-gray-600">Total</p>
+              <p id="totalCount" class="text-2xl font-bold text-gray-800">0</p>
+            </div>
+            <div class="bg-green-100 p-4 rounded-md">
+              <p class="text-sm text-green-600">Sucesso</p>
+              <p id="successCount" class="text-2xl font-bold text-green-800">0</p>
+            </div>
+            <div class="bg-red-100 p-4 rounded-md">
+              <p class="text-sm text-red-600">Erros</p>
+              <p id="errorCount" class="text-2xl font-bold text-red-800">0</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end">
+          <button type="submit" id="importBtn" class="px-4 py-2 bg-gray-400 text-white rounded-md cursor-not-allowed" disabled>
+            Importar Tutores
+          </button>
+        </div>
+      </form>
+
+      <div id="results" class="mt-8 hidden">
+        <h3 class="text-lg font-semibold mb-3">Resultados da Importação</h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+              <tr>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Nome</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Detalhes</th>
+              </tr>
+            </thead>
+            <tbody id="resultsBody" class="bg-white divide-y divide-gray-200">
+              <!-- Resultados serão inseridos aqui -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const dropArea = document.getElementById('drop-area');
+      const fileInput = document.getElementById('fileInput');
+      const selectFileBtn = document.getElementById('selectFileBtn');
+      const fileInfo = document.getElementById('fileInfo');
+      const fileName = document.getElementById('fileName');
+      const importBtn = document.getElementById('importBtn');
+      const uploadForm = document.getElementById('uploadForm');
+      const progressContainer = document.getElementById('progressContainer');
+      const progressBar = document.getElementById('progressBar');
+      const progressPercent = document.getElementById('progressPercent');
+      const importStats = document.getElementById('importStats');
+      const totalCount = document.getElementById('totalCount');
+      const successCount = document.getElementById('successCount');
+      const errorCount = document.getElementById('errorCount');
+      const results = document.getElementById('results');
+      const resultsBody = document.getElementById('resultsBody');
+      
+      let csvData = null;
+      let isProcessing = false;
+
+      // Eventos para drag and drop
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+      });
+
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, highlight, false);
+      });
+
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, unhighlight, false);
+      });
+
+      function highlight() {
+        dropArea.classList.add('highlight');
+      }
+
+      function unhighlight() {
+        dropArea.classList.remove('highlight');
+      }
+
+      dropArea.addEventListener('drop', handleDrop, false);
+
+      function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files.length) {
+          handleFiles(files);
+        }
+      }
+
+      selectFileBtn.addEventListener('click', () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files.length) {
+          handleFiles(fileInput.files);
+        }
+      });
+
+      function handleFiles(files) {
+        if (files[0].type !== 'text/csv' && !files[0].name.endsWith('.csv')) {
+          alert('Por favor, selecione um arquivo CSV válido.');
+          return;
+        }
+
+        const file = files[0];
+        fileName.textContent = file.name;
+        fileInfo.classList.remove('hidden');
+        
+        // Habilitar botão de importação
+        importBtn.disabled = false;
+        importBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+        importBtn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+
+        // Parsear o arquivo CSV
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: function(results) {
+            csvData = results.data;
+            console.log('CSV carregado:', csvData.length, 'registros');
+          },
+          error: function(error) {
+            console.error('Erro ao processar CSV:', error);
+            alert('Erro ao processar o arquivo CSV: ' + error.message);
+          }
+        });
+      }
+
+      uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (isProcessing || !csvData || csvData.length === 0) {
+          return;
+        }
+
+        isProcessing = true;
+        importBtn.disabled = true;
+        importBtn.textContent = 'Processando...';
+        importBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+        importBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        
+        // Mostrar barra de progresso
+        progressContainer.classList.remove('hidden');
+        importStats.classList.remove('hidden');
+        
+        // Resetar contadores
+        let processedCount = 0;
+        let successfulCount = 0;
+        let errorCount = 0;
+        const resultDetails = [];
+        
+        // Atualizar estatísticas iniciais
+        totalCount.textContent = csvData.length;
+        successCount.textContent = '0';
+        errorCount.textContent = '0';
+        
+        // Processar cada linha do CSV em lotes
+        const batchSize = 10;
+        const batches = [];
+        
+        for (let i = 0; i < csvData.length; i += batchSize) {
+          batches.push(csvData.slice(i, i + batchSize));
+        }
+        
+        for (let i = 0; i < batches.length; i++) {
+          const batch = batches[i];
+          const clientesFormatados = batch.map(row => {
+            // Extrair código do cliente
+            let codigo = '';
+            
+            // Verificar todas as possibilidades de nomes de colunas para o código
+            if (row['Cód.'] !== undefined && row['Cód.'] !== null && row['Cód.'] !== '') {
+              codigo = String(row['Cód.']);
+              console.log(`Encontrado código na coluna 'Cód.': ${codigo}`);
+            } else if (row['Código'] !== undefined && row['Código'] !== null && row['Código'] !== '') {
+              codigo = String(row['Código']);
+              console.log(`Encontrado código na coluna 'Código': ${codigo}`);
+            } else if (row['Cod'] !== undefined && row['Cod'] !== null && row['Cod'] !== '') {
+              codigo = String(row['Cod']);
+              console.log(`Encontrado código na coluna 'Cod': ${codigo}`);
+            } else if (row['cod'] !== undefined && row['cod'] !== null && row['cod'] !== '') {
+              codigo = String(row['cod']);
+              console.log(`Encontrado código na coluna 'cod': ${codigo}`);
+            } else {
+              console.warn('Não foi encontrado código para o cliente:', row['Nome']);
+            }
+            
+            // Garantir que o código seja um número válido
+            const id_vetsoft = codigo ? parseInt(codigo) : null;
+            console.log(`Cliente: ${row['Nome']}, Código: ${codigo}, ID VetSoft: ${id_vetsoft}`);
+            
+            // Mapear campos do CSV para o formato esperado pela API
+            return {
+              id_vetsoft: id_vetsoft,
+              tipo: 'PESSOA FÍSICA',
+              nome: row['Nome'] || '',
+              cpf: row['CPF/CNPJ'] || '',
+              rg: '',
+              nascimento: null,
+              cep: '',
+              estado: '',
+              cidade: '',
+              bairro: '',
+              endereco_tipo: '',
+              endereco_logradouro: row['Endereço'] || '',
+              endereco_numero: '',
+              endereco_complemento: '',
+              local_trabalho: row['Profissão'] || '',
+              grupo: row['Grupos'] || '',
+              como_conheceu: row['Origem'] || '',
+              observacoes: ''
+            };
+          });
+          
+          try {
+            // Obter a API key
+            const apiKey = await getApiKey();
+            console.log('API Key obtida:', apiKey ? 'Sim' : 'Não');
+            
+            // Enviar lote para a API
+            const response = await fetch('/importacao-tutores/tutores/batch', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': apiKey
+              },
+              body: JSON.stringify({ clientes: clientesFormatados })
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+              // Atualizar contadores
+              processedCount += batch.length;
+              successfulCount += result.resultados.sucessos;
+              errorCount += result.resultados.erros;
+              
+              // Adicionar detalhes para a tabela de resultados
+              if (result.resultados.detalhes) {
+                resultDetails.push(...result.resultados.detalhes);
+              }
+            } else {
+              console.error('Erro na resposta da API:', result);
+              errorCount += batch.length;
+            }
+          } catch (error) {
+            console.error('Erro ao enviar lote:', error);
+            errorCount += batch.length;
+            processedCount += batch.length;
+          }
+          
+          // Atualizar progresso
+          const progress = Math.round((processedCount / csvData.length) * 100);
+          progressBar.style.width = `${progress}%`;
+          progressPercent.textContent = `${progress}%`;
+          
+          // Atualizar estatísticas
+          successCount.textContent = successfulCount;
+          errorCount.textContent = errorCount;
+        }
+        
+        // Exibir resultados detalhados
+        results.classList.remove('hidden');
+        resultsBody.innerHTML = '';
+        
+        resultDetails.forEach(detail => {
+          const row = document.createElement('tr');
+          
+          const idCell = document.createElement('td');
+          idCell.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-500';
+          idCell.textContent = detail.id_vetsoft || '-';
+          
+          const nameCell = document.createElement('td');
+          nameCell.className = 'px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900';
+          nameCell.textContent = detail.nome;
+          
+          const statusCell = document.createElement('td');
+          statusCell.className = 'px-6 py-4 whitespace-nowrap text-sm';
+          if (detail.sucesso) {
+            statusCell.innerHTML = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800">Sucesso</span>`;
+            if (detail.atualizado) {
+              statusCell.innerHTML += ` <span class="ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">Atualizado</span>`;
+            } else {
+              statusCell.innerHTML += ` <span class="ml-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-purple-100 text-purple-800">Novo</span>`;
+            }
+          } else {
+            statusCell.innerHTML = `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-100 text-red-800">Erro</span>`;
+          }
+          
+          const detailsCell = document.createElement('td');
+          detailsCell.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-500';
+          detailsCell.textContent = detail.erro || '-';
+          
+          row.appendChild(idCell);
+          row.appendChild(nameCell);
+          row.appendChild(statusCell);
+          row.appendChild(detailsCell);
+          
+          resultsBody.appendChild(row);
+        });
+        
+        // Finalizar
+        importBtn.textContent = 'Importação Concluída';
+        isProcessing = false;
+      });
+
+      // Função para obter a API key
+      async function getApiKey() {
+        try {
+          const response = await fetch('/config/api-key');
+          const data = await response.json();
+          return data.apiKey;
+        } catch (error) {
+          console.error('Erro ao obter API key:', error);
+          return 'Je@nfree2525'; // Fallback para a API key configurada no .env
+        }
+      }
+    });
+  </script>
+</body>
+</html>

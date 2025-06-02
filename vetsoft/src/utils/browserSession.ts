@@ -55,6 +55,7 @@ export async function getBrowser(showBrowser: boolean = false): Promise<Browser>
   
   if (!browser) {
     console.log(`Iniciando nova instância do navegador (modo ${headless ? 'headless' : 'visível'})...`);
+    console.log(`Parâmetro showBrowser = ${showBrowser}, headless = ${headless}`);
     browser = await chromium.launch({
       headless: headless,
       slowMo: headless ? 0 : 50, // Adiciona atraso apenas se não for headless
@@ -66,6 +67,8 @@ export async function getBrowser(showBrowser: boolean = false): Promise<Browser>
     });
     isLoggedIn = false;
     browserStartTime = Date.now();
+  } else {
+    console.log(`Usando instância existente do navegador (modo ${headless ? 'headless' : 'visível'})...`);
   }
   
   lastUsed = Date.now();
@@ -73,9 +76,10 @@ export async function getBrowser(showBrowser: boolean = false): Promise<Browser>
 }
 
 // Função para obter o contexto do navegador
-export async function getBrowserContext(headless: boolean = false): Promise<BrowserContext> {
+export async function getBrowserContext(showBrowser: boolean = false): Promise<BrowserContext> {
   if (!context) {
-    const browserInstance = await getBrowser(headless);
+    console.log(`getBrowserContext chamado com showBrowser=${showBrowser}`);
+    const browserInstance = await getBrowser(showBrowser);
     console.log('Criando novo contexto do navegador...');
     context = await browserInstance.newContext();
     isLoggedIn = false;
@@ -87,8 +91,11 @@ export async function getBrowserContext(headless: boolean = false): Promise<Brow
 
 // Função para obter a página atual ou criar uma nova
 export async function getPage(headless: boolean = false): Promise<Page> {
+  // Importante: quando headless=false, queremos que o navegador seja visível
+  // Então passamos showBrowser=true para getBrowserContext
   if (!page) {
-    const contextInstance = await getBrowserContext(headless);
+    console.log(`getPage chamado com headless=${headless}, passando showBrowser=${!headless}`);
+    const contextInstance = await getBrowserContext(!headless);
     console.log('Criando nova página...');
     page = await contextInstance.newPage();
     

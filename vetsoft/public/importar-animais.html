@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Importar Animais - VetSoft</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
     <style>
         body {
             padding-top: 2rem;
@@ -104,14 +103,14 @@
     <div class="container">
         <div class="header">
             <h1>Importar Animais</h1>
-            <p class="lead">Selecione um arquivo Excel com dados de animais para importar</p>
+            <p class="lead">Selecione um arquivo CSV com dados de animais para importar</p>
         </div>
 
         <div class="row">
             <div class="col-md-12">
                 <div id="dropArea" class="drop-area">
-                    <p>Arraste e solte o arquivo Excel aqui ou</p>
-                    <input type="file" id="fileInput" accept=".xlsx,.xls" class="form-control" style="display: none;">
+                    <p>Arraste e solte o arquivo CSV aqui ou</p>
+                    <input type="file" id="fileInput" accept=".csv" class="form-control" style="display: none;">
                     <button id="browseBtn" class="btn btn-outline-primary">Selecionar Arquivo</button>
                     <p id="fileName" class="mt-2"></p>
                 </div>
@@ -181,6 +180,10 @@
                     <div class="alert alert-danger">
                         <h4 class="alert-heading">Erro na importação!</h4>
                         <p id="errorMessage"></p>
+                        <div class="d-flex gap-2 mt-3">
+                            <button id="btnTentarNovamente" class="btn btn-outline-danger">Tentar Novamente</button>
+                            <button id="btnVoltarInicio" class="btn btn-outline-secondary">Voltar ao Início</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -209,13 +212,15 @@
             const browseBtn = document.getElementById('browseBtn');
             const fileName = document.getElementById('fileName');
             const btnImportar = document.getElementById('btnImportar');
-            const loading = document.getElementById('loading');
             const progress = document.getElementById('progress');
             const progressBar = document.getElementById('progressBar');
+            const loading = document.getElementById('loading');
             const result = document.getElementById('result');
             const error = document.getElementById('error');
             const resultMessage = document.getElementById('resultMessage');
             const errorMessage = document.getElementById('errorMessage');
+            const btnTentarNovamente = document.getElementById('btnTentarNovamente');
+            const btnCancelarImportacao = document.getElementById('btnCancelarImportacao');
             const totalProcessados = document.getElementById('totalProcessados');
             const totalSucessos = document.getElementById('totalSucessos');
             const totalErros = document.getElementById('totalErros');
@@ -226,17 +231,15 @@
             const validationWarning = document.getElementById('validationWarning');
             const validationWarningList = document.getElementById('validationWarningList');
             const btnContinuarImportacao = document.getElementById('btnContinuarImportacao');
-            const btnCancelarImportacao = document.getElementById('btnCancelarImportacao');
 
-            let selectedFile = null;
-            let dadosParaImportar = null;
+            let csvData = null;
 
             // Evento para o botão de selecionar arquivo
             browseBtn.addEventListener('click', () => {
                 fileInput.click();
             });
 
-            // Eventos para arrastar e soltar
+            // Eventos de arrastar e soltar
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                 dropArea.addEventListener(eventName, preventDefaults, false);
             });
@@ -247,335 +250,221 @@
             }
 
             ['dragenter', 'dragover'].forEach(eventName => {
-                dropArea.addEventListener(eventName, highlight, false);
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.classList.add('dragover');
+                });
             });
 
             ['dragleave', 'drop'].forEach(eventName => {
-                dropArea.addEventListener(eventName, unhighlight, false);
+                dropArea.addEventListener(eventName, () => {
+                    dropArea.classList.remove('dragover');
+                });
             });
 
-            function highlight() {
-                dropArea.classList.add('dragover');
-            }
-
-            function unhighlight() {
-                dropArea.classList.remove('dragover');
-            }
-
-            // Evento para quando um arquivo é solto na área
-            dropArea.addEventListener('drop', handleDrop, false);
-
-            function handleDrop(e) {
+            dropArea.addEventListener('drop', (e) => {
                 const dt = e.dataTransfer;
                 const files = dt.files;
                 handleFiles(files);
-            }
-
-            // Evento para quando um arquivo é selecionado pelo input
-            fileInput.addEventListener('change', function() {
-                handleFiles(this.files);
             });
 
-            function handleFiles(files) {
-                if (files.length > 0) {
-                    selectedFile = files[0];
-                    fileName.textContent = `Arquivo selecionado: ${selectedFile.name}`;
-                    btnImportar.disabled = false;
-                }
-            }
+            browseBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
 
-            // Toggle para mostrar/esconder detalhes
-            toggleDetalhes.addEventListener('click', function() {
-                if (detalhesImportacao.style.display === 'block') {
-                    detalhesImportacao.style.display = 'none';
-                    toggleDetalhes.innerHTML = '<i class="bi bi-chevron-down"></i> Mostrar detalhes da importação';
-                } else {
-                    detalhesImportacao.style.display = 'block';
-                    toggleDetalhes.innerHTML = '<i class="bi bi-chevron-up"></i> Esconder detalhes da importação';
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    handleFiles(fileInput.files);
                 }
             });
 
-            // Botões de confirmação/cancelamento de validação
-            btnContinuarImportacao.addEventListener('click', async function() {
+            btnImportar.addEventListener('click', async () => {
+                await processarImportacao();
+            });
+
+            // Adicionar event listeners para os botões de ação
+            document.getElementById('btnTentarNovamente')?.addEventListener('click', () => {
+                error.style.display = 'none';
+                dropArea.style.display = 'block';
+                btnImportar.style.display = 'block';
+            });
+
+            document.getElementById('btnContinuarImportacao')?.addEventListener('click', async () => {
                 validationWarning.style.display = 'none';
-                await iniciarImportacao(dadosParaImportar);
+                await processarImportacao();
             });
 
-            btnCancelarImportacao.addEventListener('click', function() {
+            document.getElementById('btnCancelarImportacao')?.addEventListener('click', () => {
                 validationWarning.style.display = 'none';
                 btnImportar.disabled = false;
             });
+            
+            // Adicionar event listener para o botão de voltar ao início
+            document.getElementById('btnVoltarInicio')?.addEventListener('click', () => {
+                window.location.href = '/';
+            });
 
-            // Botão de importar
-            btnImportar.addEventListener('click', async function() {
-                if (!selectedFile) {
-                    alert('Por favor, selecione um arquivo Excel!');
-                    return;
-                }
-
-                // Resetar elementos de UI
-                result.style.display = 'none';
-                error.style.display = 'none';
-                validationWarning.style.display = 'none';
-                btnImportar.disabled = true;
-
-                try {
-                    // Ler o arquivo Excel
-                    const data = await readExcelFile(selectedFile);
-                    
-                    if (!data || data.length === 0) {
-                        throw new Error('O arquivo Excel não contém dados válidos.');
-                    }
-
-                    // Validar os dados antes de importar
-                    const validacoes = validarDados(data);
-                    
-                    if (validacoes.avisos.length > 0) {
-                        // Mostrar avisos e pedir confirmação
-                        validationWarningList.innerHTML = '';
-                        validacoes.avisos.forEach(aviso => {
-                            const li = document.createElement('li');
-                            li.textContent = aviso;
-                            validationWarningList.appendChild(li);
-                        });
-                        
-                        validationWarning.style.display = 'block';
-                        dadosParaImportar = data;
-                        return;
-                    }
-                    
-                    // Se não houver avisos, iniciar importação diretamente
-                    await iniciarImportacao(data);
-                    
-                } catch (err) {
-                    console.error('Erro:', err);
-                    errorMessage.textContent = err.message;
-                    error.style.display = 'block';
-                    btnImportar.disabled = false;
+            toggleDetalhes.addEventListener('click', () => {
+                if (detalhesImportacao.style.display === 'none' || !detalhesImportacao.style.display) {
+                    detalhesImportacao.style.display = 'block';
+                    toggleDetalhes.innerHTML = '<i class="bi bi-chevron-up"></i> Ocultar detalhes da importação';
+                } else {
+                    detalhesImportacao.style.display = 'none';
+                    toggleDetalhes.innerHTML = '<i class="bi bi-chevron-down"></i> Mostrar detalhes da importação';
                 }
             });
 
-            // Função para iniciar o processo de importação
-            async function iniciarImportacao(dados) {
-                // Mostrar loading e barra de progresso
+            function handleFiles(files) {
+                if (files.length === 0) return;
+                
+                const file = files[0];
+                fileName.textContent = file.name;
+                
+                // Verificar extensão do arquivo
+                const extensao = file.name.split('.').pop().toLowerCase();
+                if (extensao !== 'csv') {
+                    errorMessage.textContent = 'Formato de arquivo inválido. Por favor, selecione um arquivo CSV.';
+                    error.style.display = 'block';
+                    return;
+                }
+                
+                btnImportar.disabled = false;
+                btnImportar.classList.remove('btn-secondary');
+                btnImportar.classList.add('btn-primary');
+                
+                // Ler o arquivo CSV
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        csvData = e.target.result;
+                        
+                        // Verificar se o CSV tem dados válidos
+                        Papa.parse(csvData, {
+                            header: true,
+                            skipEmptyLines: true,
+                            complete: function(results) {
+                                if (results.data.length === 0) {
+                                    errorMessage.textContent = 'O arquivo não contém dados válidos.';
+                                    error.style.display = 'block';
+                                    return;
+                                }
+                                
+                                console.log(`Arquivo carregado com ${results.data.length} registros`);
+                                console.log('Exemplo do primeiro registro:', results.data[0]);
+                            },
+                            error: function(error) {
+                                console.error('Erro ao processar arquivo CSV:', error);
+                                errorMessage.textContent = `Erro ao processar o arquivo: ${error.message}`;
+                                error.style.display = 'block';
+                            }
+                        });
+                    } catch (err) {
+                        console.error('Erro ao processar arquivo:', err);
+                        errorMessage.textContent = `Erro ao processar o arquivo: ${err.message}`;
+                        error.style.display = 'block';
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            async function processarImportacao() {
+                if (!csvData) {
+                    errorMessage.textContent = 'Nenhum dado para importar. Por favor, selecione um arquivo válido.';
+                    error.style.display = 'block';
+                    return;
+                }
+                
+                // Esconder área de drop e botão
+                dropArea.style.display = 'none';
+                btnImportar.style.display = 'none';
+                
+                // Mostrar progresso e loading
+                progress.style.display = 'block';
                 loading.style.display = 'block';
-                progress.style.display = 'flex';
                 
                 try {
-                    // Processar os dados
-                    await processarDados(dados);
-                } catch (err) {
-                    console.error('Erro durante importação:', err);
-                    errorMessage.textContent = err.message;
-                    error.style.display = 'block';
-                } finally {
+                    // Obter API key
+                    const apiKey = await getApiKey();
+                    
+                    // Enviar dados para a API
+                    const response = await fetch('/importacao-animais/animais/csv', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-api-key': apiKey
+                        },
+                        body: JSON.stringify({ csvData })
+                    });
+                    
+                    const resultado = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(resultado.error || 'Erro ao importar animais');
+                    }
+                    
+                    // Esconder loading e progresso
                     loading.style.display = 'none';
-                    btnImportar.disabled = false;
-                }
-            }
-
-            // Função para ler o arquivo Excel
-            async function readExcelFile(file) {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
+                    progress.style.display = 'none';
                     
-                    reader.onload = function(e) {
-                        try {
-                            const data = e.target.result;
-                            const workbook = XLSX.read(data, { type: 'array' });
-                            const sheetName = workbook.SheetNames[0];
-                            const worksheet = workbook.Sheets[sheetName];
-                            const json = XLSX.utils.sheet_to_json(worksheet);
-                            resolve(json);
-                        } catch (error) {
-                            reject(new Error('Erro ao processar o arquivo Excel: ' + error.message));
-                        }
-                    };
+                    // Atualizar estatísticas
+                    const resultados = resultado.resultados || {};
+                    totalProcessados.textContent = resultados.total || 0;
+                    totalSucessos.textContent = resultados.sucessos || 0;
+                    totalErros.textContent = resultados.erros || 0;
+                    totalTutores.textContent = resultados.tutoresCriados || 0;
                     
-                    reader.onerror = function() {
-                        reject(new Error('Erro ao ler o arquivo.'));
-                    };
+                    // Mostrar mensagem de sucesso
+                    resultMessage.textContent = `Importação concluída! Foram processados ${resultados.total || 0} animais.`;
+                    result.style.display = 'block';
                     
-                    reader.readAsArrayBuffer(file);
-                });
-            }
-
-            // Função para validar os dados antes da importação
-            function validarDados(dados) {
-                const avisos = [];
-                
-                // Verificar campos obrigatórios
-                const semCodigo = dados.filter(item => !item['Código']).length;
-                if (semCodigo > 0) {
-                    avisos.push(`${semCodigo} animais não possuem código.`);
-                }
-                
-                const semNome = dados.filter(item => !item['Nome']).length;
-                if (semNome > 0) {
-                    avisos.push(`${semNome} animais não possuem nome.`);
-                }
-                
-                const semTutorCodigo = dados.filter(item => !item['Código Tutor']).length;
-                if (semTutorCodigo > 0) {
-                    avisos.push(`${semTutorCodigo} animais não possuem código do tutor.`);
-                }
-                
-                const semTutorNome = dados.filter(item => !item['Nome Tutor']).length;
-                if (semTutorNome > 0) {
-                    avisos.push(`${semTutorNome} animais não possuem nome do tutor.`);
-                }
-                
-                // Verificar duplicidades
-                const codigos = dados.map(item => item['Código']);
-                const codigosUnicos = new Set(codigos);
-                if (codigos.length !== codigosUnicos.size) {
-                    avisos.push(`Existem códigos de animais duplicados no arquivo.`);
-                }
-                
-                return { avisos };
-            }
-
-            // Função para processar os dados
-            async function processarDados(dados) {
-                const total = dados.length;
-                let processados = 0;
-                let sucessos = 0;
-                let erros = 0;
-                let tutoresCriados = 0;
-                let detalhes = [];
-                
-                // Processar em lotes para melhor performance
-                const tamanhoBatch = 10;
-                const totalBatches = Math.ceil(dados.length / tamanhoBatch);
-                
-                for (let i = 0; i < totalBatches; i++) {
-                    const inicio = i * tamanhoBatch;
-                    const fim = Math.min(inicio + tamanhoBatch, dados.length);
-                    const lote = dados.slice(inicio, fim);
-                    
-                    const animaisBatch = lote.map(item => ({
-                        codigo: item['Código'] || '',
-                        nome: item['Nome'] || '',
-                        especie: item['Espécie'] || '',
-                        raca: item['Raça'] || '',
-                        sexo: item['Sexo'] || '',
-                        data_nascimento: formatarData(item['Data Nascimento']),
-                        data_cadastro: formatarData(item['Data Cadastro']) || new Date().toISOString(),
-                        tutor_codigo: item['Código Tutor'] || '',
-                        tutor_nome: item['Nome Tutor'] || '',
-                        data_obito: formatarData(item['Data Óbito']),
-                        codigo_internacao: item['Código Internação'] || null
-                    }));
-                    
-                    try {
-                        // Enviar lote para o backend
-                        const response = await fetch('/importacao/animais/batch', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify({ animais: animaisBatch })
-                        });
-                        
-                        if (!response.ok) {
-                            const errorData = await response.json();
-                            throw new Error(`Erro na importação: ${errorData.error || response.statusText}`);
-                        }
-                        
-                        const resultado = await response.json();
-                        
-                        if (resultado.success) {
-                            sucessos += resultado.resultados.sucessos;
-                            erros += resultado.resultados.erros;
-                            tutoresCriados += resultado.resultados.tutoresCriados || 0;
+                    // Preencher tabela de detalhes
+                    detalhesTabela.innerHTML = '';
+                    if (resultados.detalhes && resultados.detalhes.length > 0) {
+                        resultados.detalhes.forEach(detalhe => {
+                            const tr = document.createElement('tr');
                             
-                            // Adicionar detalhes para exibição
-                            if (resultado.resultados.detalhes) {
-                                detalhes = detalhes.concat(resultado.resultados.detalhes);
+                            const tdCodigo = document.createElement('td');
+                            tdCodigo.textContent = detalhe.id_vetsoft || '-';
+                            
+                            const tdNome = document.createElement('td');
+                            tdNome.textContent = detalhe.nome || '-';
+                            
+                            const tdTutor = document.createElement('td');
+                            tdTutor.textContent = '-'; // Não temos essa informação no retorno
+                            
+                            const tdStatus = document.createElement('td');
+                            if (detalhe.sucesso) {
+                                tdStatus.innerHTML = `<span class="badge bg-success">${detalhe.atualizado ? 'Atualizado' : 'Inserido'}</span>`;
+                            } else {
+                                tdStatus.innerHTML = `<span class="badge bg-danger" title="${detalhe.erro}">Erro</span>`;
                             }
-                        } else {
-                            throw new Error(resultado.error || 'Erro desconhecido na importação');
-                        }
-                    } catch (err) {
-                        console.error(`Erro ao processar lote: ${err.message}`);
-                        erros += lote.length;
+                            
+                            tr.appendChild(tdCodigo);
+                            tr.appendChild(tdNome);
+                            tr.appendChild(tdTutor);
+                            tr.appendChild(tdStatus);
+                            
+                            detalhesTabela.appendChild(tr);
+                        });
                     }
-                    
-                    processados += lote.length;
-                    const percentual = Math.round((processados / total) * 100);
-                    progressBar.style.width = `${percentual}%`;
-                    progressBar.textContent = `${percentual}%`;
-                    progressBar.setAttribute('aria-valuenow', percentual);
+                } catch (err) {
+                    console.error('Erro ao processar importação:', err);
+                    loading.style.display = 'none';
+                    progress.style.display = 'none';
+                    errorMessage.textContent = err.message || 'Erro ao processar importação';
+                    error.style.display = 'block';
                 }
                 
-                // Atualizar estatísticas
-                totalProcessados.textContent = processados;
-                totalSucessos.textContent = sucessos;
-                totalErros.textContent = erros;
-                totalTutores.textContent = tutoresCriados;
-                
-                // Mostrar resultado
-                resultMessage.textContent = `Importação concluída! Foram processados ${processados} animais.`;
-                
-                // Preencher tabela de detalhes
-                detalhesTabela.innerHTML = '';
-                detalhes.forEach(detalhe => {
-                    const tr = document.createElement('tr');
-                    
-                    const tdCodigo = document.createElement('td');
-                    tdCodigo.textContent = detalhe.codigo;
-                    
-                    const tdNome = document.createElement('td');
-                    tdNome.textContent = detalhe.nome;
-                    
-                    const tdTutor = document.createElement('td');
-                    tdTutor.textContent = detalhe.tutor;
-                    
-                    const tdStatus = document.createElement('td');
-                    if (detalhe.sucesso) {
-                        tdStatus.innerHTML = `<span class="badge bg-success">${detalhe.atualizado ? 'Atualizado' : 'Inserido'}</span>`;
-                    } else {
-                        tdStatus.innerHTML = `<span class="badge bg-danger" title="${detalhe.erro}">Erro</span>`;
-                    }
-                    
-                    tr.appendChild(tdCodigo);
-                    tr.appendChild(tdNome);
-                    tr.appendChild(tdTutor);
-                    tr.appendChild(tdStatus);
-                    
-                    detalhesTabela.appendChild(tr);
-                });
-                
-                result.style.display = 'block';
             }
             
-            // Função para formatar datas
-            function formatarData(dataStr) {
-                if (!dataStr) return null;
-                
+            // Função para obter a API key
+            async function getApiKey() {
                 try {
-                    // Tenta converter para formato ISO
-                    const data = new Date(dataStr);
-                    if (!isNaN(data.getTime())) {
-                        return data.toISOString();
-                    }
-                    
-                    // Se não conseguir, tenta formatos comuns no Brasil
-                    if (typeof dataStr === 'string') {
-                        // Formato DD/MM/YYYY
-                        const partes = dataStr.split('/');
-                        if (partes.length === 3) {
-                            const novaData = new Date(`${partes[2]}-${partes[1]}-${partes[0]}`);
-                            if (!isNaN(novaData.getTime())) {
-                                return novaData.toISOString();
-                            }
-                        }
-                    }
-                    
-                    return null;
-                } catch (e) {
-                    console.error('Erro ao formatar data:', dataStr, e);
-                    return null;
+                    const response = await fetch('/config/api-key');
+                    const data = await response.json();
+                    return data.apiKey;
+                } catch (error) {
+                    console.error('Erro ao obter API key:', error);
+                    return 'Je@nfree2525'; // Fallback para a API key configurada no .env
                 }
             }
         });

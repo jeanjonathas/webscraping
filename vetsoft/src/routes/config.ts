@@ -12,4 +12,11 @@ router.get('/supabase', (_req, res) => {
   });
 });
 
+// Rota para obter a API key para o frontend
+router.get('/api-key', (_req, res) => {
+  res.json({
+    apiKey: process.env.API_KEY || 'supervet_vetsoft_api_2025'
+  });
+});
+
 export default router;
