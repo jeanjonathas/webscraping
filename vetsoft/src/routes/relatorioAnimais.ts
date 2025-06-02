@@ -109,7 +109,7 @@ async function navegarParaRelatorioAnimaisSemSemaforo(headless: boolean = true, 
 }
 
 // Rota para obter relatório de animais com período personalizado
-router.get('/relatorio', async (req, res) => {
+router.get('/', async (req, res) => {
   // Parâmetros da query
   const periodo = req.query.periodo as string || 'atual'; // atual, proximo, todos, ou intervalo personalizado
   const dataInicial = req.query.dataInicial as string;
@@ -386,65 +386,47 @@ async function configurarPeriodoMes(page: any, mes: number, ano: number): Promis
     
     // Clicar no campo de data para abrir o seletor
     console.log('Clicando no campo de data para abrir o seletor...');
-    await page.locator('#data_filtro').click();
-    await page.waitForTimeout(1000);
+    await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+    await page.waitForTimeout(2000);
     
     // Verificar se o DateRangePicker está aberto
     const dateRangePickerVisible = await page.locator('.daterangepicker').isVisible();
     if (!dateRangePickerVisible) {
       console.warn('DateRangePicker não está visível após clicar no campo de data');
       // Tentar clicar novamente
-      await page.locator('#data_filtro').click();
-      await page.waitForTimeout(1000);
+      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+      await page.waitForTimeout(2000);
     }
     
-    // Selecionar "Escolher período" nas opções pré-definidas
-    console.log('Selecionando "Escolher período"...');
-    await page.locator('.ranges li[data-range-key="Escolher período"]').click();
-    await page.waitForTimeout(1000);
-    
-    // Navegar para o mês e ano selecionados no calendário esquerdo
-    await navegarParaMesAno(page, mes, ano, 'left');
-    
-    // Selecionar o primeiro dia do mês
-    console.log(`Selecionando o primeiro dia de ${mes + 1}/${ano}...`);
-    // Encontrar o primeiro dia disponível no mês (que não seja "off")
-    const primeiroDiaMes = await page.locator('.drp-calendar.left td.available:not(.off)').first();
-    await primeiroDiaMes.click();
-    await page.waitForTimeout(500);
-    
-    // Navegar para o mesmo mês e ano no calendário direito
-    await navegarParaMesAno(page, mes, ano, 'right');
-    
-    // Selecionar o último dia do mês selecionado
-    console.log(`Selecionando o último dia de ${mes + 1}/${ano}...`);
-    // Encontrar o último dia disponível no mês (que não seja "off")
-    const ultimoDiaMes = await page.locator('.drp-calendar.right td.available:not(.off)');
-    const totalDias = await ultimoDiaMes.count();
-    if (totalDias > 0) {
-      await ultimoDiaMes.nth(totalDias - 1).click();
-      await page.waitForTimeout(500);
-    } else {
-      console.warn(`Nenhum dia disponível encontrado no calendário direito para ${mes + 1}/${ano}`);
-    }
+    // Selecionar "Este mês" nas opções pré-definidas (mais confiável)
+    console.log('Selecionando "Este mês"...');
+    await page.locator('.ranges li[data-range-key="Este mês"]').click();
+    await page.waitForTimeout(2000);
     
     // Verificar se o botão Aplicar está visível e clicar nele
-    console.log('Clicando no botão Aplicar...');
+    // O botão Aplicar pode ser automático, mas vamos garantir
+    console.log('Verificando se é necessário clicar no botão Aplicar...');
     const applyBtn = page.locator('.applyBtn');
     if (await applyBtn.isVisible()) {
       await applyBtn.click();
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(2000);
     }
     
     // Verificar se o calendário fechou
     const calendarClosed = !(await page.locator('.daterangepicker').isVisible());
-    console.log(`Calendário fechou após clicar em Aplicar: ${calendarClosed}`);
+    console.log(`Calendário fechou após selecionar período: ${calendarClosed}`);
     
     // Clicar no botão Filtrar para aplicar o filtro
     console.log('Clicando no botão Filtrar...');
     try {
-      // Tentar com o seletor mais específico
-      await page.locator('button.btn-primary[data-original-title="Aplicar Filtros"]').click({ timeout: 5000 });
+      // Tentar com o seletor mais específico primeiro
+      const filtrarBtn = page.locator('button.btn-primary').filter({ hasText: 'Filtrar' });
+      if (await filtrarBtn.count() > 0) {
+        await filtrarBtn.click();
+      } else {
+        // Tentar com o seletor por atributo
+        await page.locator('button.btn-primary[data-original-title="Aplicar Filtros"]').click({ timeout: 5000 });
+      }
     } catch (e) {
       console.log('Tentando seletor alternativo para o botão Filtrar...');
       try {
@@ -453,7 +435,7 @@ async function configurarPeriodoMes(page: any, mes: number, ano: number): Promis
       } catch (e2) {
         console.log('Tentando seletor genérico para o botão Filtrar...');
         // Tentar com um seletor mais genérico
-        await page.locator('button.btn-primary').click({ timeout: 5000 });
+        await page.locator('button.btn-primary').first().click({ timeout: 5000 });
       }
     }
     
@@ -465,7 +447,7 @@ async function configurarPeriodoMes(page: any, mes: number, ano: number): Promis
     const hasLoadingOverlay = await page.locator('.loadingoverlay').isVisible();
     if (hasLoadingOverlay) {
       console.log('Detectado overlay de carregamento, aguardando finalizar...');
-      await page.waitForSelector('.loadingoverlay', { state: 'hidden', timeout: 20000 }).catch((e: Error) => {
+      await page.waitForSelector('.loadingoverlay', { state: 'hidden', timeout: 30000 }).catch((e: Error) => {
         console.warn('Timeout aguardando overlay de carregamento desaparecer:', e);
       });
     }
@@ -478,7 +460,7 @@ async function configurarPeriodoMes(page: any, mes: number, ano: number): Promis
       await page.waitForTimeout(5000); // Aguardar mais 5 segundos
     }
     
-    console.log('Período configurado com sucesso para o ano de 2022');
+    console.log(`Período configurado com sucesso para o mês ${mes + 1}/${ano}`);
     
     // Verificar se há dados na tabela
     console.log('Verificando dados na tabela...');
@@ -496,72 +478,11 @@ async function configurarPeriodoMes(page: any, mes: number, ano: number): Promis
       }
     } else {
       console.log(`Encontrados ${numRegistros} registros na tabela. Prosseguindo com a extração...`);
-      // Continuar com a extração dos dados sem tentar clicar no botão Filtrar novamente
-      return; // Sair da função configurarPeriodoPersonalizado e continuar com a extração de dados
     }
   } catch (error) {
     console.error('Erro ao configurar período por mês:', error);
     throw error;
   }
-}
-
-// Função auxiliar para navegar para um mês e ano específicos no calendário
-async function navegarParaMesAno(page: any, mes: number, ano: number, lado: 'left' | 'right'): Promise<void> {
-  try {
-    console.log(`Navegando para ${mes + 1}/${ano} no calendário ${lado}...`);
-    
-    // Obter o mês e ano atual exibidos no calendário
-    const mesAnoTexto = await page.locator(`.drp-calendar.${lado} .month`).textContent();
-    console.log(`Calendário ${lado} mostrando: ${mesAnoTexto}`);
-    
-    // Extrair mês e ano do texto (formato: "mai 2025")
-    const [mesTexto, anoTexto] = mesAnoTexto.trim().split(' ');
-    const mesAtualIndex = obterIndiceMes(mesTexto);
-    const anoAtual = parseInt(anoTexto, 10);
-    
-    if (isNaN(anoAtual) || mesAtualIndex === -1) {
-      throw new Error(`Não foi possível extrair mês/ano de "${mesAnoTexto}"`);
-    }
-    
-    console.log(`Calendário ${lado} atual: mês ${mesAtualIndex + 1}, ano ${anoAtual}`);
-    
-    // Calcular quantos meses precisamos navegar para trás
-    // Se o mês/ano alvo é anterior ao atual, precisamos navegar para trás
-    const anosDiferenca = ano - anoAtual;
-    const mesesDiferenca = mes - mesAtualIndex;
-    const totalMesesDiferenca = (anosDiferenca * 12) + mesesDiferenca;
-    
-    console.log(`Diferença total em meses: ${totalMesesDiferenca}`);
-    
-    // Determinar qual botão de navegação usar
-    const botaoNavegacao = totalMesesDiferenca < 0 
-      ? `.drp-calendar.${lado} .prev.available` 
-      : `.drp-calendar.${lado} .next.available`;
-    
-    // Clicar no botão de navegação o número necessário de vezes
-    const cliques = Math.abs(totalMesesDiferenca);
-    for (let i = 0; i < cliques; i++) {
-      console.log(`Clique de navegação ${i + 1}/${cliques}`);
-      await page.locator(botaoNavegacao).click();
-      await page.waitForTimeout(300); // Pequena pausa entre cliques
-    }
-    
-    // Verificar se chegamos ao mês/ano desejado
-    const mesAnoFinalTexto = await page.locator(`.drp-calendar.${lado} .month`).textContent();
-    console.log(`Calendário ${lado} após navegação: ${mesAnoFinalTexto}`);
-    
-    // Aguardar um pouco para garantir que o calendário foi atualizado
-    await page.waitForTimeout(500);
-  } catch (error) {
-    console.error(`Erro ao navegar para ${mes + 1}/${ano} no calendário ${lado}:`, error);
-    throw error;
-  }
-}
-
-// Função auxiliar para obter o índice do mês a partir da abreviação
-function obterIndiceMes(mesAbreviado: string): number {
-  const mesesAbreviados = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  return mesesAbreviados.findIndex(m => mesAbreviado.toLowerCase().startsWith(m));
 }
 
 // Rota para servir a página HTML de exportação de relatório
@@ -886,6 +807,8 @@ function formatDate(date: Date): string {
 // Função para configurar período personalizado
 async function configurarPeriodoPersonalizado(page: any, dataInicial: string, dataFinal: string): Promise<void> {
   try {
+    console.log(`Configurando período personalizado de ${dataInicial} a ${dataFinal}`);
+    
     // Converter as datas para o formato esperado (DD/MM/YYYY)
     const [diaInicial, mesInicial, anoInicial] = dataInicial.split('/').map(Number);
     const [diaFinal, mesFinal, anoFinal] = dataFinal.split('/').map(Number);
@@ -894,60 +817,156 @@ async function configurarPeriodoPersonalizado(page: any, dataInicial: string, da
     const mesInicialIndex = mesInicial - 1;
     const mesFinalIndex = mesFinal - 1;
     
-    // Configurar data inicial
-    await page.locator('.drp-calendar.left .month').click();
-    await page.waitForTimeout(500);
+    // Clicar no campo de data para abrir o seletor
+    console.log('Clicando no campo de data para abrir o seletor...');
+    await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+    await page.waitForTimeout(2000);
     
-    await page.locator('.drp-calendar.left .yearselect').click();
-    await page.waitForTimeout(500);
-    await page.locator(`.drp-calendar.left .yearselect option[value="${anoInicial}"]`).click();
-    await page.waitForTimeout(500);
-    
-    await page.locator(`.drp-calendar.left .monthselect option[value="${mesInicialIndex}"]`).click();
-    await page.waitForTimeout(500);
-    
-    // Tentar clicar no dia específico
-    const diaInicialSelector = `.drp-calendar.left td.available:has-text("${diaInicial}")`;
-    const diaInicialCount = await page.locator(diaInicialSelector).count();
-    
-    if (diaInicialCount > 0) {
-      await page.locator(diaInicialSelector).first().click();
-    } else {
-      // Fallback: clicar no primeiro dia disponível
-      await page.locator('.drp-calendar.left td.available').first().click();
+    // Verificar se o DateRangePicker está aberto
+    const dateRangePickerVisible = await page.locator('.daterangepicker').isVisible();
+    if (!dateRangePickerVisible) {
+      console.warn('DateRangePicker não está visível após clicar no campo de data');
+      // Tentar clicar novamente
+      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+      await page.waitForTimeout(2000);
     }
     
-    // Configurar data final
-    await page.locator('.drp-calendar.right .month').click();
-    await page.waitForTimeout(500);
+    // Selecionar "Escolher período" nas opções pré-definidas
+    console.log('Selecionando "Escolher período"...');
+    await page.locator('.ranges li[data-range-key="Escolher período"]').click();
+    await page.waitForTimeout(2000);
     
-    await page.locator('.drp-calendar.right .yearselect').click();
-    await page.waitForTimeout(500);
-    await page.locator(`.drp-calendar.right .yearselect option[value="${anoFinal}"]`).click();
-    await page.waitForTimeout(500);
+    // Configurar data inicial (calendário esquerdo)
+    console.log(`Configurando data inicial: ${diaInicial}/${mesInicial}/${anoInicial}`);
     
-    await page.locator(`.drp-calendar.right .monthselect option[value="${mesFinalIndex}"]`).click();
-    await page.waitForTimeout(500);
+    // Verificar se precisamos mudar o ano
+    const anoAtualEsquerdo = await page.locator('.drp-calendar.left .yearselect').evaluate((el: HTMLSelectElement) => el.value);
+    if (anoAtualEsquerdo != anoInicial.toString()) {
+      console.log(`Alterando ano de ${anoAtualEsquerdo} para ${anoInicial} no calendário esquerdo`);
+      await page.locator('.drp-calendar.left .yearselect').selectOption(anoInicial.toString());
+      await page.waitForTimeout(1000);
+    }
     
-    // Tentar clicar no dia específico
-    const diaFinalSelector = `.drp-calendar.right td.available:has-text("${diaFinal}")`;
-    const diaFinalCount = await page.locator(diaFinalSelector).count();
+    // Verificar se precisamos mudar o mês
+    const mesAtualEsquerdo = await page.locator('.drp-calendar.left .monthselect').evaluate((el: HTMLSelectElement) => el.value);
+    if (mesAtualEsquerdo != mesInicialIndex.toString()) {
+      console.log(`Alterando mês de ${parseInt(mesAtualEsquerdo) + 1} para ${mesInicial} no calendário esquerdo`);
+      await page.locator('.drp-calendar.left .monthselect').selectOption(mesInicialIndex.toString());
+      await page.waitForTimeout(1000);
+    }
     
-    if (diaFinalCount > 0) {
-      await page.locator(diaFinalSelector).first().click();
-    } else {
-      // Fallback: clicar no último dia disponível
-      const diasDisponiveisFim = await page.locator('.drp-calendar.right td.available').count();
-      if (diasDisponiveisFim > 0) {
-        await page.locator('.drp-calendar.right td.available').nth(diasDisponiveisFim - 1).click();
+    // Selecionar o dia inicial
+    console.log(`Selecionando dia ${diaInicial} no calendário esquerdo`);
+    const diasEsquerdo = await page.locator('.drp-calendar.left td.available:not(.off)');
+    const diasEsquerdoCount = await diasEsquerdo.count();
+    
+    let diaInicialEncontrado = false;
+    for (let i = 0; i < diasEsquerdoCount; i++) {
+      const texto = await diasEsquerdo.nth(i).textContent();
+      if (texto && texto.trim() === diaInicial.toString()) {
+        await diasEsquerdo.nth(i).click();
+        diaInicialEncontrado = true;
+        break;
       }
     }
     
-    // Clicar no botão Aplicar
-    await page.getByRole('button', { name: 'Aplicar' }).click();
-    await page.waitForTimeout(2000);
+    if (!diaInicialEncontrado) {
+      console.warn(`Dia ${diaInicial} não encontrado no calendário esquerdo, selecionando o primeiro dia disponível`);
+      await diasEsquerdo.first().click();
+    }
     
-    console.log(`Período configurado de ${dataInicial} a ${dataFinal}`);
+    await page.waitForTimeout(1000);
+    
+    // Configurar data final (calendário direito)
+    console.log(`Configurando data final: ${diaFinal}/${mesFinal}/${anoFinal}`);
+    
+    // Verificar se precisamos mudar o ano
+    const anoAtualDireito = await page.locator('.drp-calendar.right .yearselect').evaluate((el: HTMLSelectElement) => el.value);
+    if (anoAtualDireito != anoFinal.toString()) {
+      console.log(`Alterando ano de ${anoAtualDireito} para ${anoFinal} no calendário direito`);
+      await page.locator('.drp-calendar.right .yearselect').selectOption(anoFinal.toString());
+      await page.waitForTimeout(1000);
+    }
+    
+    // Verificar se precisamos mudar o mês
+    const mesAtualDireito = await page.locator('.drp-calendar.right .monthselect').evaluate((el: HTMLSelectElement) => el.value);
+    if (mesAtualDireito != mesFinalIndex.toString()) {
+      console.log(`Alterando mês de ${parseInt(mesAtualDireito) + 1} para ${mesFinal} no calendário direito`);
+      await page.locator('.drp-calendar.right .monthselect').selectOption(mesFinalIndex.toString());
+      await page.waitForTimeout(1000);
+    }
+    
+    // Selecionar o dia final
+    console.log(`Selecionando dia ${diaFinal} no calendário direito`);
+    const diasDireito = await page.locator('.drp-calendar.right td.available:not(.off)');
+    const diasDireitoCount = await diasDireito.count();
+    
+    let diaFinalEncontrado = false;
+    for (let i = 0; i < diasDireitoCount; i++) {
+      const texto = await diasDireito.nth(i).textContent();
+      if (texto && texto.trim() === diaFinal.toString()) {
+        await diasDireito.nth(i).click();
+        diaFinalEncontrado = true;
+        break;
+      }
+    }
+    
+    if (!diaFinalEncontrado) {
+      console.warn(`Dia ${diaFinal} não encontrado no calendário direito, selecionando o último dia disponível`);
+      await diasDireito.nth(diasDireitoCount - 1).click();
+    }
+    
+    await page.waitForTimeout(1000);
+    
+    // Clicar no botão Aplicar
+    console.log('Clicando no botão Aplicar...');
+    const applyBtn = page.locator('.applyBtn');
+    if (await applyBtn.isVisible()) {
+      await applyBtn.click();
+      await page.waitForTimeout(2000);
+    }
+    
+    // Verificar se o calendário fechou
+    const calendarClosed = !(await page.locator('.daterangepicker').isVisible());
+    console.log(`Calendário fechou após selecionar período: ${calendarClosed}`);
+    
+    // Clicar no botão Filtrar para aplicar o filtro
+    console.log('Clicando no botão Filtrar...');
+    try {
+      // Tentar com o seletor mais específico primeiro
+      const filtrarBtn = page.locator('button.btn-primary').filter({ hasText: 'Filtrar' });
+      if (await filtrarBtn.count() > 0) {
+        await filtrarBtn.click();
+      } else {
+        // Tentar com o seletor por atributo
+        await page.locator('button.btn-primary[data-original-title="Aplicar Filtros"]').click({ timeout: 5000 });
+      }
+    } catch (e) {
+      console.log('Tentando seletor alternativo para o botão Filtrar...');
+      try {
+        // Tentar com o seletor por texto
+        await page.getByRole('button', { name: 'Filtrar' }).click({ timeout: 5000 });
+      } catch (e2) {
+        console.log('Tentando seletor genérico para o botão Filtrar...');
+        // Tentar com um seletor mais genérico
+        await page.locator('button.btn-primary').first().click({ timeout: 5000 });
+      }
+    }
+    
+    // Aguardar o carregamento dos dados
+    console.log('Aguardando carregamento dos dados após filtrar...');
+    await page.waitForTimeout(10000); // Aumentar para 10 segundos
+    
+    // Verificar se há overlay de carregamento e aguardar que desapareça
+    const hasLoadingOverlay = await page.locator('.loadingoverlay').isVisible();
+    if (hasLoadingOverlay) {
+      console.log('Detectado overlay de carregamento, aguardando finalizar...');
+      await page.waitForSelector('.loadingoverlay', { state: 'hidden', timeout: 30000 }).catch((e: Error) => {
+        console.warn('Timeout aguardando overlay de carregamento desaparecer:', e);
+      });
+    }
+    
+    console.log(`Período personalizado configurado com sucesso de ${dataInicial} a ${dataFinal}`);
   } catch (error) {
     console.error('Erro ao configurar período personalizado:', error);
     throw error;
