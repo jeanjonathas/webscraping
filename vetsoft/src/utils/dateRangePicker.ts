@@ -43,7 +43,14 @@ export async function configurarPeriodoPersonalizado(
     
     // Clicar no campo de data para abrir o seletor
     console.log('Clicando no campo de data para abrir o seletor...');
-    await page.locator(seletorCampoData).click();
+    try {
+      // Tentar primeiro com o seletor fornecido
+      await page.locator(seletorCampoData).click({ timeout: 5000 });
+    } catch (error) {
+      console.log('Seletor fornecido não encontrado, tentando alternativa...');
+      // Tentar com o seletor alternativo
+      await page.getByRole('textbox', { name: 'Data Cadastro' }).click({ timeout: 5000 });
+    }
     await page.waitForTimeout(2000);
     
     // Verificar se o DateRangePicker está aberto
@@ -237,9 +244,9 @@ export async function clicarBotaoFiltrar(page: any): Promise<void> {
     console.log('Clicando no botão Filtrar...');
     try {
       // Tentar com o seletor mais específico primeiro
-      const filtrarBtn = page.locator('button.btn-primary').filter({ hasText: 'Filtrar' });
+      const filtrarBtn = page.locator('button.btn-primary').getByText('Filtrar');
       if (await filtrarBtn.count() > 0) {
-        await filtrarBtn.click();
+        await filtrarBtn.click({ timeout: 5000 });
       } else {
         // Tentar com o seletor por atributo
         await page.locator('button.btn-primary[data-original-title="Aplicar Filtros"]').click({ timeout: 5000 });
@@ -251,8 +258,14 @@ export async function clicarBotaoFiltrar(page: any): Promise<void> {
         await page.getByRole('button', { name: 'Filtrar' }).click({ timeout: 5000 });
       } catch (e2) {
         console.log('Tentando seletor genérico para o botão Filtrar...');
-        // Tentar com um seletor mais genérico
-        await page.locator('button.btn-primary').first().click({ timeout: 5000 });
+        try {
+          // Tentar com um seletor mais genérico
+          await page.locator('button.btn-primary').first().click({ timeout: 5000 });
+        } catch (e3) {
+          console.log('Tentando último recurso para o botão Filtrar...');
+          // Último recurso - tentar clicar no botão azul visível
+          await page.locator('.btn.btn-primary:visible').click({ timeout: 5000 });
+        }
       }
     }
     
