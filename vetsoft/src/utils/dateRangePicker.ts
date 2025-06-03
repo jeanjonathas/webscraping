@@ -5,6 +5,208 @@ import { Page } from 'playwright';
  * @param mesTexto Nome do mês em português (abreviado ou completo)
  * @returns Índice do mês (0-11) ou -1 se não encontrado
  */
+export function converterMesTextoParaIndice(mesTexto: string): number {
+  const meses = {
+    'janeiro': 0, 'jan': 0,
+    'fevereiro': 1, 'fev': 1,
+    'março': 2, 'mar': 2,
+    'abril': 3, 'abr': 3,
+    'maio': 4, 'mai': 4,
+    'junho': 5, 'jun': 5,
+    'julho': 6, 'jul': 6,
+    'agosto': 7, 'ago': 7,
+    'setembro': 8, 'set': 8,
+    'outubro': 9, 'out': 9,
+    'novembro': 10, 'nov': 10,
+    'dezembro': 11, 'dez': 11
+  };
+  
+  const mesNormalizado = mesTexto.toLowerCase().trim();
+  return meses[mesNormalizado as keyof typeof meses] ?? -1;
+}
+
+/**
+ * Configura o período para um mês específico no DateRangePicker
+ * @param page Instância da página Playwright
+ * @param mes Mês desejado (0-11, onde 0 é Janeiro)
+ * @param ano Ano desejado (ex: 2025)
+ */
+export async function configurarPeriodoMes(
+  page: Page,
+  mes: number,
+  ano: number
+): Promise<void> {
+  try {
+    console.log(`Configurando período para mês ${mes + 1} e ano ${ano}...`);
+    
+    // Obter o mês e ano atuais exibidos no calendário
+    const headerSelector = '.drp-calendar.left .month';
+    await page.waitForSelector(headerSelector, { timeout: 5000 });
+    
+    const headerText = await page.locator(headerSelector).textContent();
+    console.log(`Calendário exibindo: ${headerText}`);
+    
+    if (!headerText) {
+      throw new Error('Não foi possível ler o mês/ano atual do calendário');
+    }
+    
+    // Extrair mês e ano atuais do texto (formato: "Junho 2025")
+    const partes = headerText.trim().split(' ');
+    const mesAtualTexto = partes[0];
+    const anoAtualTexto = parseInt(partes[1]);
+    
+    // Converter mês de texto para número
+    const mesAtual = converterMesTextoParaIndice(mesAtualTexto);
+    
+    if (mesAtual === -1) {
+      throw new Error(`Mês não reconhecido: ${mesAtualTexto}`);
+    }
+    
+    // Calcular quantos meses precisamos navegar
+    // Se o ano for diferente, precisamos considerar isso
+    let diferencaMeses = (ano - anoAtualTexto) * 12 + (mes - mesAtual);
+    
+    console.log(`Diferença de meses: ${diferencaMeses} (${mesAtual}/${anoAtualTexto} -> ${mes}/${ano})`);
+    
+    // Navegar para trás ou para frente conforme necessário
+    if (diferencaMeses < 0) {
+      // Navegar para trás
+      for (let i = 0; i < Math.abs(diferencaMeses); i++) {
+        console.log(`Clicando no botão de mês anterior... (${i+1}/${Math.abs(diferencaMeses)})`);
+        await page.locator('.prev.available').click();
+        await page.waitForTimeout(300); // Pequena pausa entre cliques
+      }
+    } else if (diferencaMeses > 0) {
+      // Navegar para frente
+      for (let i = 0; i < diferencaMeses; i++) {
+        console.log(`Clicando no botão de próximo mês... (${i+1}/${diferencaMeses})`);
+        await page.locator('.next.available').click();
+        await page.waitForTimeout(300); // Pequena pausa entre cliques
+      }
+    }
+    
+    // Verificar se chegamos ao mês/ano desejado
+    const novoHeaderText = await page.locator(headerSelector).textContent();
+    console.log(`Calendário agora exibindo: ${novoHeaderText}`);
+    
+    // Selecionar o primeiro dia do mês
+    console.log('Selecionando o primeiro dia do mês...');
+    await page.locator('.drp-calendar.left .available:not(.off)').first().click();
+    await page.waitForTimeout(500);
+    
+    // Selecionar o último dia do mês
+    console.log('Selecionando o último dia do mês...');
+    await page.locator('.drp-calendar.left .available:not(.off)').last().click();
+    await page.waitForTimeout(500);
+    
+  } catch (error) {
+    console.error(`Erro ao configurar período para mês ${mes + 1} e ano ${ano}: ${error}`);
+    throw error;
+  }
+}
+
+/**
+ * Seleciona o período "Hoje" diretamente no DateRangePicker
+ * @param page Instância da página Playwright
+ * @param seletorCampoData Seletor do campo de data que abre o DateRangePicker (opcional)
+ */
+export async function selecionarPeriodoHoje(
+  page: Page,
+  seletorCampoData: string = 'input[name="daterange"]'
+): Promise<void> {
+  try {
+    console.log('Selecionando período "Hoje"...');
+    
+    // Clicar no campo de data para abrir o seletor
+    console.log('Clicando no campo de data para abrir o seletor...');
+    try {
+      // Tentar primeiro com o seletor fornecido
+      await page.locator(seletorCampoData).click({ timeout: 5000 });
+    } catch (error) {
+      console.log('Seletor fornecido não encontrado, tentando alternativa...');
+      // Tentar com o seletor alternativo
+      await page.getByRole('textbox', { name: 'Data Cadastro' }).click({ timeout: 5000 });
+    }
+    await page.waitForTimeout(1000);
+    
+    // Verificar se o DateRangePicker está aberto
+    const dateRangePickerVisible = await page.locator('.daterangepicker').isVisible();
+    if (!dateRangePickerVisible) {
+      console.warn('DateRangePicker não está visível após clicar no campo de data');
+      // Tentar clicar novamente
+      await page.locator(seletorCampoData).click();
+      await page.waitForTimeout(1000);
+    }
+    
+    // Selecionar "Hoje" nas opções pré-definidas
+    const hojeSelector = '.ranges li[data-range-key="Hoje"]';
+    const hojeExists = await page.locator(hojeSelector).count() > 0;
+    
+    if (hojeExists) {
+      console.log('Selecionando opção "Hoje"...');
+      await page.locator(hojeSelector).click();
+      await page.waitForTimeout(1000);
+      
+      // Verificar se o calendário fechou automaticamente
+      const calendarioFechado = !(await page.locator('.daterangepicker').isVisible());
+      console.log(`Calendário fechou após selecionar período: ${calendarioFechado}`);
+      
+      // Se não fechou automaticamente, clicar no botão Aplicar
+      if (!calendarioFechado) {
+        console.log('Clicando no botão Aplicar...');
+        await page.locator('.applyBtn').click();
+        await page.waitForTimeout(1000);
+      }
+      
+      // Clicar no botão Filtrar para aplicar o filtro
+      console.log('Clicando no botão Filtrar...');
+      try {
+        // Tentar com o seletor mais específico primeiro
+        const filtrarBtn = page.locator('button.btn-primary').filter({ hasText: 'Filtrar' });
+        if (await filtrarBtn.count() > 0) {
+          await filtrarBtn.click();
+        } else {
+          // Tentar com o seletor por atributo
+          await page.locator('button.btn-primary[data-original-title="Aplicar Filtros"]').click({ timeout: 5000 });
+        }
+      } catch (e) {
+        console.log('Tentando seletor alternativo para o botão Filtrar...');
+        try {
+          // Tentar com o seletor por texto
+          await page.getByRole('button', { name: 'Filtrar' }).click({ timeout: 5000 });
+        } catch (e2) {
+          console.log('Tentando seletor genérico para o botão Filtrar...');
+          // Tentar com um seletor mais genérico
+          await page.locator('button.btn-primary').first().click({ timeout: 5000 });
+        }
+      }
+      
+      // Aguardar o carregamento dos dados
+      console.log('Aguardando carregamento dos dados após filtrar...');
+      await page.waitForTimeout(5000);
+      
+      // Verificar se há overlay de carregamento e aguardar que desapareça
+      const hasLoadingOverlay = await page.locator('.loadingoverlay').isVisible();
+      if (hasLoadingOverlay) {
+        console.log('Detectado overlay de carregamento, aguardando finalizar...');
+        await page.waitForSelector('.loadingoverlay', { state: 'hidden', timeout: 30000 }).catch((e: Error) => {
+          console.warn('Timeout aguardando overlay de carregamento desaparecer:', e);
+        });
+      }
+    } else {
+      throw new Error('Opção "Hoje" não encontrada no DateRangePicker');
+    }
+  } catch (error) {
+    console.error(`Erro ao selecionar período "Hoje": ${error}`);
+    throw error;
+  }
+}
+
+/**
+ * Função auxiliar para converter nome do mês em texto para índice (0-11)
+ * @param mesTexto Nome do mês em português (abreviado ou completo)
+ * @returns Índice do mês (0-11) ou -1 se não encontrado
+ */
 export function obterIndiceMes(mesTexto: string): number {
   const meses: { [key: string]: number } = {
     'jan': 0, 'fev': 1, 'mar': 2, 'abr': 3, 'mai': 4, 'jun': 5,

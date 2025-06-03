@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Exportar Animais - VetSoft</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.css" />
     <style>
         body {
             padding-top: 2rem;
@@ -49,27 +49,62 @@
         .alert {
             margin-top: 1rem;
         }
+        .period-options {
+            margin-bottom: 1.5rem;
+        }
+        .date-inputs {
+            display: none;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>Exportar Animais</h1>
-            <p class="lead">Selecione o ano para exportar os dados dos animais cadastrados para Excel</p>
+            <p class="lead">Selecione o período para exportar os dados dos animais cadastrados para CSV</p>
         </div>
 
         <div class="row">
             <div class="col-md-12">
-                <div class="form-group">
-                    <label for="ano" class="form-label">Ano:</label>
-                    <select id="ano" class="form-select">
-                        <option value="">Selecione um ano</option>
-                        <!-- Anos serão preenchidos via JavaScript -->
-                    </select>
+                <div class="form-group period-options">
+                    <label class="form-label">Selecione o período:</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="periodo" id="periodoHoje" value="hoje">
+                        <label class="form-check-label" for="periodoHoje">Hoje</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="periodo" id="periodoAtual" value="atual" checked>
+                        <label class="form-check-label" for="periodoAtual">Mês Atual</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="periodo" id="periodoProximo" value="proximo">
+                        <label class="form-check-label" for="periodoProximo">Próximo Mês</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="periodo" id="periodoTodos" value="todos">
+                        <label class="form-check-label" for="periodoTodos">Todos</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="periodo" id="periodoPersonalizado" value="personalizado">
+                        <label class="form-check-label" for="periodoPersonalizado">Período Personalizado</label>
+                    </div>
+                </div>
+                
+                <div id="dateInputs" class="form-group date-inputs">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label for="dataInicial" class="form-label">Data Inicial:</label>
+                            <input type="text" id="dataInicial" class="form-control" placeholder="DD/MM/AAAA">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="dataFinal" class="form-label">Data Final:</label>
+                            <input type="text" id="dataFinal" class="form-control" placeholder="DD/MM/AAAA">
+                        </div>
+                    </div>
                 </div>
 
-                <div class="d-grid gap-2">
-                    <button id="btnExportar" class="btn btn-primary btn-lg">Exportar para Excel</button>
+                <div class="d-grid gap-2 mt-4">
+                    <button id="btnExportar" class="btn btn-primary btn-lg">Exportar para CSV</button>
                 </div>
 
                 <div id="loading" class="loading">
@@ -99,19 +134,56 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/momentjs/latest/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/daterangepicker/daterangepicker.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            // Preencher o dropdown de anos
-            const anoSelect = document.getElementById('ano');
-            const anoAtual = new Date().getFullYear();
+            // Configurar DateRangePicker para os campos de data
+            $('#dataInicial').daterangepicker({
+                singleDatePicker: true,
+                showDropdowns: true,
+                locale: {
+                    format: 'DD/MM/YYYY',
+                    daysOfWeek: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+                    monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+                    firstDay: 0
+                }
+            });
             
-            // Adicionar anos de 2020 até o ano atual
-            for (let ano = 2020; ano <= anoAtual; ano++) {
-                const option = document.createElement('option');
-                option.value = ano;
-                option.textContent = ano;
-                anoSelect.appendChild(option);
-            }
+            $('#dataFinal').daterangepicker({
+                singleDatePicker: true,
+                showDropdowns: true,
+                locale: {
+                    format: 'DD/MM/YYYY',
+                    daysOfWeek: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
+                    monthNames: ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'],
+                    firstDay: 0
+                }
+            });
+            
+            // Configurar data inicial e final com o mês atual
+            const hoje = new Date();
+            const primeiroDiaMes = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+            const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+            
+            $('#dataInicial').data('daterangepicker').setStartDate(primeiroDiaMes);
+            $('#dataFinal').data('daterangepicker').setStartDate(ultimoDiaMes);
+            
+            // Mostrar/esconder campos de data personalizada
+            const periodoPersonalizado = document.getElementById('periodoPersonalizado');
+            const dateInputs = document.getElementById('dateInputs');
+            
+            document.querySelectorAll('input[name="periodo"]').forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.value === 'personalizado') {
+                        dateInputs.style.display = 'block';
+                    } else {
+                        dateInputs.style.display = 'none';
+                    }
+                });
+            });
 
             // Botão de exportar
             const btnExportar = document.getElementById('btnExportar');
@@ -122,12 +194,27 @@
             const errorMessage = document.getElementById('errorMessage');
 
             btnExportar.addEventListener('click', async function() {
-                const ano = anoSelect.value;
+                // Obter o período selecionado
+                const periodoSelecionado = document.querySelector('input[name="periodo"]:checked').value;
+                let params = new URLSearchParams();
+                params.append('periodo', periodoSelecionado);
                 
-                if (!ano) {
-                    alert('Por favor, selecione um ano!');
-                    return;
+                // Se for período personalizado, obter as datas
+                if (periodoSelecionado === 'personalizado') {
+                    const dataInicial = $('#dataInicial').val();
+                    const dataFinal = $('#dataFinal').val();
+                    
+                    if (!dataInicial || !dataFinal) {
+                        alert('Por favor, selecione as datas inicial e final!');
+                        return;
+                    }
+                    
+                    params.append('dataInicial', dataInicial);
+                    params.append('dataFinal', dataFinal);
                 }
+                
+                // Adicionar API key
+                params.append('api_key', 'Je@nfree2525');
 
                 // Mostrar loading e esconder outros elementos
                 loading.style.display = 'block';
@@ -136,8 +223,8 @@
                 btnExportar.disabled = true;
 
                 try {
-                    // Fazer a requisição para a API usando a rota /animais/ano/
-                    const response = await fetch(`/animais/ano/${ano}`);
+                    // Fazer a requisição para a API
+                    const response = await fetch(`/relatorio-animais?${params.toString()}`);
                     
                     if (!response.ok) {
                         throw new Error(`Erro ao buscar dados: ${response.statusText}`);
@@ -145,22 +232,15 @@
 
                     const data = await response.json();
                     
-                    if (!data.animais || data.animais.length === 0) {
-                        throw new Error('Nenhum animal encontrado para o ano selecionado.');
+                    if (!data.data || data.data.length === 0) {
+                        throw new Error('Nenhum animal encontrado para o período selecionado.');
                     }
-
-                    // Criar planilha Excel
-                    const wb = XLSX.utils.book_new();
-                    const ws = XLSX.utils.json_to_sheet(data.animais);
                     
-                    // Adicionar planilha ao workbook
-                    XLSX.utils.book_append_sheet(wb, ws, `Animais ${ano}`);
+                    // Converter dados para CSV
+                    const csvContent = convertToCSV(data.data);
                     
-                    // Gerar arquivo Excel
-                    const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-                    
-                    // Converter para Blob
-                    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    // Criar blob com o conteúdo CSV
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
                     
                     // Criar URL para download
                     const url = URL.createObjectURL(blob);
@@ -168,11 +248,11 @@
                     // Criar link de download
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `animais_${ano}.xlsx`;
+                    a.download = `animais_${periodoSelecionado}_${new Date().toISOString().split('T')[0]}.csv`;
                     document.body.appendChild(a);
                     
                     // Mostrar resultado
-                    resultMessage.textContent = `Foram encontrados ${data.animais.length} animais cadastrados em ${ano}.`;
+                    resultMessage.textContent = `Foram encontrados ${data.data.length} animais no período selecionado.`;
                     result.style.display = 'block';
                     
                     // Iniciar download
@@ -191,6 +271,31 @@
                     btnExportar.disabled = false;
                 }
             });
+            
+            // Função para converter dados para CSV
+            function convertToCSV(data) {
+                if (data.length === 0) return '';
+                
+                // Obter cabeçalhos (todas as propriedades dos objetos)
+                const headers = Object.keys(data[0]);
+                
+                // Criar linha de cabeçalho
+                let csvContent = headers.join(';') + '\n';
+                
+                // Adicionar linhas de dados
+                data.forEach(item => {
+                    const row = headers.map(header => {
+                        // Tratar valores nulos ou indefinidos
+                        const value = item[header] === null || item[header] === undefined ? '' : item[header];
+                        // Escapar aspas duplas e envolver em aspas se contiver vírgulas, ponto e vírgula ou quebras de linha
+                        const cell = String(value).replace(/"/g, '""');
+                        return `"${cell}"`;
+                    });
+                    csvContent += row.join(';') + '\n';
+                });
+                
+                return csvContent;
+            }
         });
     </script>
 </body>

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { withLockWait } from '../utils/requestSemaphore';
 import { resetSession, ensureLoggedIn } from '../utils/browserSession';
-import { configurarPeriodoPersonalizado, clicarBotaoFiltrar } from '../utils/dateRangePicker';
+import { configurarPeriodoPersonalizado, clicarBotaoFiltrar, selecionarPeriodoHoje } from '../utils/dateRangePicker';
 
 // Tipos
 interface AnimalCompleto {
@@ -162,53 +162,61 @@ router.get('/', async (req: Request, res: Response) => {
       console.log(`Rota /exportar-csv foi chamada com período: ${periodo}`);
       console.log(`Parâmetros: showBrowser=${showBrowser}, dataInicial=${dataInicial}, dataFinal=${dataFinal}`);
       
-      const result = await withLockWait<{ success: boolean; data?: AnimalCompleto[]; csv?: string; total?: number; error?: string }>(operationId, async () => {
-        console.log(`Semáforo adquirido para ${operationId}, iniciando navegação...`);
-        
-        // Fazer login e manter o semáforo bloqueado durante toda a operação
-        console.log(`Iniciando navegação com navegador ${showBrowser ? 'visível' : 'headless'}...`);
-        const page = await ensureLoggedIn(showBrowser ? false : true, true); // keepLock=true para manter o semáforo
-        
-        // Navegar para a página de relatório de animais
-        await navegarParaRelatorioAnimais(page);
-        console.log('Navegação concluída com sucesso, página carregada.');
-        
-        // Configurar o período de consulta
-        if (periodo !== 'todos') {
-          console.log(`Configurando período: ${periodo}`);
+      const result = await withLockWait<{ success: boolean; data?: AnimalCompleto[]; csv?: string; total?: number; error?: string }>(operationId, async (): Promise<{ success: boolean; data?: AnimalCompleto[]; csv?: string; total?: number; error?: string }> => {
+        try {
+          console.log(`Semáforo adquirido para ${operationId}, iniciando navegação...`);
           
-          // Clicar no campo de data
-          await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-          await page.waitForTimeout(1000);
+          // Fazer login e manter o semáforo bloqueado durante toda a operação
+          console.log(`Iniciando navegação com navegador ${showBrowser ? 'visível' : 'headless'}...`);
+          const page = await ensureLoggedIn(showBrowser ? false : true, true); // keepLock=true para manter o semáforo
+        
+          // Navegar para a página de relatório de animais
+          await navegarParaRelatorioAnimais(page);
+          console.log('Navegação concluída com sucesso, página carregada.');
           
-          // Clicar em "Escolher período"
-          await page.getByText('Escolher período').click();
-          await page.waitForTimeout(1000);
-          
-          if (periodo === 'atual' || periodo === 'proximo') {
-            // Obter o mês atual
-            const dataAtual = new Date();
-            let mes = dataAtual.getMonth();
-            let ano = dataAtual.getFullYear();
+          // Configurar o período de consulta
+          if (periodo !== 'todos') {
+            console.log(`Configurando período: ${periodo}`);
             
-            if (periodo === 'proximo') {
-              mes += 1;
-              if (mes > 11) {
-                mes = 0;
-                ano += 1;
+            if (periodo === 'hoje') {
+              // Usar a nova função para selecionar o período "Hoje" diretamente
+              console.log('Usando seleção direta para o período "Hoje"');
+              await selecionarPeriodoHoje(page);
+            } else {
+              // Para outros períodos, usar o fluxo normal
+              // Clicar no campo de data
+              await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+              await page.waitForTimeout(1000);
+              
+              // Clicar em "Escolher período"
+              await page.getByText('Escolher período').click();
+              await page.waitForTimeout(1000);
+              
+              if (periodo === 'atual' || periodo === 'proximo') {
+                // Obter o mês atual
+                const dataAtual = new Date();
+                let mes = dataAtual.getMonth();
+                let ano = dataAtual.getFullYear();
+                
+                if (periodo === 'proximo') {
+                  mes += 1;
+                  if (mes > 11) {
+                    mes = 0;
+                    ano += 1;
+                  }
+                }
+                
+                // Selecionar o mês e ano na interface
+                await configurarPeriodoMes(page, mes, ano);
+              } else if (dataInicial && dataFinal) {
+                // Configurar período personalizado usando o seletor específico da página
+                await configurarPeriodoPersonalizado(page, dataInicial, dataFinal, "input[role='textbox'][name='Data Cadastro']");
+                
+                // Clicar no botão Filtrar após configurar o período
+                await clicarBotaoFiltrar(page);
               }
             }
-            
-            // Selecionar o mês e ano na interface
-            await configurarPeriodoMes(page, mes, ano);
-          } else if (dataInicial && dataFinal) {
-            // Configurar período personalizado usando o seletor específico da página
-            await configurarPeriodoPersonalizado(page, dataInicial, dataFinal, "input[role='textbox'][name='Data Cadastro']");
-            
-            // Clicar no botão Filtrar após configurar o período
-            await clicarBotaoFiltrar(page);
           }
-        }
         
         // Verificar se há dados na tabela antes de extrair
         console.log('Verificando se há dados na tabela antes de extrair...');
@@ -429,12 +437,30 @@ router.get('/', async (req: Request, res: Response) => {
           total: animais.length,
           error: undefined
         };
+        } catch (error: any) {
+          console.error('Erro ao gerar CSV:', error);
+          return {
+            success: false,
+            error: error.message || 'Erro ao gerar CSV',
+            data: [],
+            total: 0
+          };
+        }
       }, 300000); // Aguardar até 5 minutos pelo bloqueio
       
       if (result.success) {
         // Configurar cabeçalhos para download do CSV
         res.setHeader('Content-Type', 'text/csv');
         res.setHeader('Content-Disposition', `attachment; filename=relatorio_animais_${formatDate(new Date())}.csv`);
+        
+        // Fechar o navegador se não estiver em modo de visualização
+        if (!showBrowser) {
+          console.log('Fechando o navegador após concluir a operação...');
+          await resetSession();
+        } else {
+          console.log('Navegador mantido aberto devido ao parâmetro showBrowser=true');
+        }
+        
         res.send(result.csv);
       } else {
         res.status(500).json({
@@ -448,7 +474,7 @@ router.get('/', async (req: Request, res: Response) => {
       // Se ocorrer um erro, tenta resetar a sessão para a próxima tentativa
       await resetSession();
       
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: error.message || 'Erro desconhecido'
       });
@@ -457,9 +483,6 @@ router.get('/', async (req: Request, res: Response) => {
       // O withLockWait já cuida de liberar o semáforo automaticamente no seu bloco finally
       console.log('Operação concluída');
     }
-    
-    // Retorno explícito para satisfazer o TypeScript
-    return;
   });
   
 // Exportar o router

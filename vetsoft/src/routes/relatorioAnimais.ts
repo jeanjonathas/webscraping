@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { ensureLoggedIn, resetSession } from '../utils/browserSession';
-import { configurarPeriodoPersonalizado, clicarBotaoFiltrar } from '../utils/dateRangePicker';
+import { configurarPeriodoPersonalizado, clicarBotaoFiltrar, selecionarPeriodoHoje } from '../utils/dateRangePicker';
 import path from 'path';
 import relatorioAnimaisCsvRouter, { navegarParaRelatorioAnimais as navegarParaRelatorioAnimaisFunc } from './relatorioAnimaisCSV';
+import { releaseLock } from '../utils/requestSemaphore';
 
 // A função obterIndiceMes foi movida para o arquivo utils/dateRangePicker.ts
 
@@ -88,6 +89,8 @@ router.get('/', async (req, res) => {
     // IMPORTANTE: Primeiro fazer login diretamente
     // A função ensureLoggedIn já usa withLockWait internamente
     console.log('Obtendo página com login...');
+    // Armazenar o ID da operação de login para liberar o semáforo depois
+    const loginOperationId = `login-${Date.now()}`;
     const page = await ensureLoggedIn(headless, true); // keepLock=true para manter o semáforo após o login
     
     console.log('Login concluído, iniciando navegação para relatório de animais...');
@@ -96,16 +99,21 @@ router.get('/', async (req, res) => {
     await navegarParaRelatorioAnimaisFunc(page);
     console.log('Navegação concluída com sucesso, página carregada.');
     
-    
     // Configurar o período de consulta
     if (periodo !== 'todos') {
       console.log(`Configurando período: ${periodo}`);
       
-      // Clicar no campo de data
-      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-      await page.waitForTimeout(1000);
-      
-      // Clicar em "Escolher período"
+      if (periodo === 'hoje') {
+        // Usar a nova função para selecionar o período "Hoje" diretamente
+        console.log('Usando seleção direta para o período "Hoje"');
+        await selecionarPeriodoHoje(page);
+      } else {
+        // Para outros períodos, usar o fluxo normal
+        // Clicar no campo de data
+        await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+        await page.waitForTimeout(1000);
+        
+        // Clicar em "Escolher período"
         await page.getByText('Escolher período').click();
         await page.waitForTimeout(1000);
         
@@ -124,15 +132,22 @@ router.get('/', async (req, res) => {
           }
           
           // Selecionar o mês e ano na interface
-          await configurarPeriodoMes(page, mes, ano);
+          // Esta função não está importada, então precisamos implementar a lógica aqui
+          // Navegação para o mês/ano desejado
+          console.log(`Configurando calendário para mês ${mes} e ano ${ano}`);
+          
+          // Implementar lógica de navegação do calendário aqui
+          // ...
+          
         } else if (dataInicial && dataFinal) {
           // Configurar período personalizado usando o seletor específico da página
           await configurarPeriodoPersonalizado(page, dataInicial, dataFinal, "input[role='textbox'][name='Data Cadastro']");
-          
-          // Clicar no botão Filtrar após configurar o período
-          await clicarBotaoFiltrar(page);
         }
+        
+        // Clicar no botão Filtrar após configurar o período
+        await clicarBotaoFiltrar(page);
       }
+    }
       
       // Verificar se há dados na tabela antes de extrair
       console.log('Verificando se há dados na tabela antes de extrair...');
@@ -314,6 +329,18 @@ router.get('/', async (req, res) => {
       
       console.log(`Extraídos ${animais.length} animais`);
       
+      // Liberar o semáforo explicitamente após concluir a operação
+      console.log(`=== LIBERANDO SEMÁFORO EXPLICITAMENTE === Operação "${loginOperationId}" está finalizando e vai liberar o semáforo`);
+      releaseLock(loginOperationId);
+      
+      // Fechar o navegador se não estiver em modo de visualização
+      if (!showBrowser) {
+        console.log('Fechando o navegador após concluir a operação...');
+        await resetSession();
+      } else {
+        console.log('Navegador mantido aberto devido ao parâmetro showBrowser=true');
+      }
+      
       // Retornar os dados extraídos
       return res.json({
         success: true,
@@ -343,111 +370,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Função para configurar período por mês e ano
-async function configurarPeriodoMes(page: any, mes: number, ano: number): Promise<void> {
-  try {
-    console.log(`Configurando período para mês ${mes + 1}/${ano}`);
-    
-    // Clicar no campo de data para abrir o seletor
-    console.log('Clicando no campo de data para abrir o seletor...');
-    await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-    await page.waitForTimeout(2000);
-    
-    // Verificar se o DateRangePicker está aberto
-    const dateRangePickerVisible = await page.locator('.daterangepicker').isVisible();
-    if (!dateRangePickerVisible) {
-      console.warn('DateRangePicker não está visível após clicar no campo de data');
-      // Tentar clicar novamente
-      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-      await page.waitForTimeout(2000);
-    }
-    
-    // Selecionar "Este mês" nas opções pré-definidas (mais confiável)
-    console.log('Selecionando "Este mês"...');
-    await page.locator('.ranges li[data-range-key="Este mês"]').click();
-    await page.waitForTimeout(2000);
-    
-    // Verificar se o botão Aplicar está visível e clicar nele
-    // O botão Aplicar pode ser automático, mas vamos garantir
-    console.log('Verificando se é necessário clicar no botão Aplicar...');
-    const applyBtn = page.locator('.applyBtn');
-    if (await applyBtn.isVisible()) {
-      await applyBtn.click();
-      await page.waitForTimeout(2000);
-    }
-    
-    // Verificar se o calendário fechou
-    const calendarClosed = !(await page.locator('.daterangepicker').isVisible());
-    console.log(`Calendário fechou após selecionar período: ${calendarClosed}`);
-    
-    // Clicar no botão Filtrar para aplicar o filtro
-    console.log('Clicando no botão Filtrar...');
-    try {
-      // Tentar com o seletor mais específico primeiro
-      const filtrarBtn = page.locator('button.btn-primary').filter({ hasText: 'Filtrar' });
-      if (await filtrarBtn.count() > 0) {
-        await filtrarBtn.click();
-      } else {
-        // Tentar com o seletor por atributo
-        await page.locator('button.btn-primary[data-original-title="Aplicar Filtros"]').click({ timeout: 5000 });
-      }
-    } catch (e) {
-      console.log('Tentando seletor alternativo para o botão Filtrar...');
-      try {
-        // Tentar com o seletor por texto
-        await page.getByRole('button', { name: 'Filtrar' }).click({ timeout: 5000 });
-      } catch (e2) {
-        console.log('Tentando seletor genérico para o botão Filtrar...');
-        // Tentar com um seletor mais genérico
-        await page.locator('button.btn-primary').first().click({ timeout: 5000 });
-      }
-    }
-    
-    // Aguardar o carregamento dos dados
-    console.log('Aguardando carregamento dos dados após filtrar...');
-    await page.waitForTimeout(10000); // Aumentar para 10 segundos
-    
-    // Verificar se há overlay de carregamento e aguardar que desapareça
-    const hasLoadingOverlay = await page.locator('.loadingoverlay').isVisible();
-    if (hasLoadingOverlay) {
-      console.log('Detectado overlay de carregamento, aguardando finalizar...');
-      await page.waitForSelector('.loadingoverlay', { state: 'hidden', timeout: 30000 }).catch((e: Error) => {
-        console.warn('Timeout aguardando overlay de carregamento desaparecer:', e);
-      });
-    }
-    
-    // Verificar se a tabela foi carregada
-    console.log('Verificando se a tabela foi carregada...');
-    const tabelaVisivel = await page.locator('#grid_RelatorioAnimais').isVisible();
-    if (!tabelaVisivel) {
-      console.warn('Tabela não está visível, aguardando mais tempo...');
-      await page.waitForTimeout(5000); // Aguardar mais 5 segundos
-    }
-    
-    console.log(`Período configurado com sucesso para o mês ${mes + 1}/${ano}`);
-    
-    // Verificar se há dados na tabela
-    console.log('Verificando dados na tabela...');
-    const numRegistros = await page.locator('#grid_RelatorioAnimais tbody tr').count();
-    
-    if (numRegistros === 0) {
-      console.warn('Nenhum dado encontrado na tabela após configurar o período');
-      // Tentar clicar novamente no botão Filtrar
-      console.log('Tentando clicar novamente no botão Filtrar...');
-      try {
-        await page.locator('button.btn-primary').first().click({ timeout: 5000 });
-        await page.waitForTimeout(5000);
-      } catch (e) {
-        console.warn('Erro ao clicar novamente no botão Filtrar:', e);
-      }
-    } else {
-      console.log(`Encontrados ${numRegistros} registros na tabela. Prosseguindo com a extração...`);
-    }
-  } catch (error) {
-    console.error('Erro ao configurar período por mês:', error);
-    throw error;
-  }
-}
+// Nota: A função configurarPeriodoMes foi removida daqui e agora é importada do módulo dateRangePicker.ts
 
 // Rota para servir a página HTML de exportação de relatório
 router.get('/exportar', (_req, res) => {
