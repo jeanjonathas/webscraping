@@ -46,7 +46,8 @@
         <div class="bg-gray-100 p-3 rounded-md overflow-x-auto">
           <code>Cód.,Nome,CPF/CNPJ,Contatos,Endereço,Profissão,Cadastro,Atualização,Grupos,Animais,Origem,Situação</code>
         </div>
-        <p>2. Apenas o campo <strong>Nome</strong> é obrigatório.</p>
+        <p class="text-red-600 font-bold">2. Os campos <strong>Cód.</strong> e <strong>Nome</strong> são obrigatórios!</p>
+        <p class="text-red-600">O campo <strong>Cód.</strong> deve conter o ID do tutor no sistema VetSoft e é essencial para a importação.</p>
         <p>3. Os campos de data devem estar no formato DD/MM/AAAA.</p>
         <p>4. Arraste o arquivo para a área abaixo ou clique para selecionar.</p>
       </div>
@@ -215,6 +216,90 @@
           complete: function(results) {
             csvData = results.data;
             console.log('CSV carregado:', csvData.length, 'registros');
+            console.log('Cabeçalhos encontrados:', results.meta.fields);
+            
+            // Verificar se o CSV contém a coluna de código
+            const colunasCodigoPossiveis = ['Cód.', 'Código', 'Cod', 'cod', 'ID', 'id', 'Cód'];
+            const colunaCodigo = results.meta.fields.find(field => 
+              colunasCodigoPossiveis.includes(field)
+            );
+            
+            console.log('Colunas encontradas:', results.meta.fields);
+            console.log('Coluna de código encontrada:', colunaCodigo);
+            
+            if (!colunaCodigo) {
+              alert('ATENÇÃO: O arquivo CSV não contém uma coluna de código (Cód, Cód., Código, Cod, ID). Esta coluna é OBRIGATÓRIA para a importação de tutores.');
+              csvData = [];
+              importBtn.disabled = true;
+              importBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+              importBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+              
+              // Adicionar alerta visual
+              const alertDiv = document.createElement('div');
+              alertDiv.className = 'bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mt-4';
+              alertDiv.innerHTML = `
+                <strong class="font-bold">Erro!</strong>
+                <span class="block sm:inline">O arquivo CSV não contém uma coluna de código (Cód, Cód., Código, Cod, ID). Esta coluna é OBRIGATÓRIA.</span>
+              `;
+              fileInfo.after(alertDiv);
+              return;
+            }
+            
+            // Verificar se todas as linhas têm códigos válidos
+            const linhasSemCodigo = csvData.filter(row => {
+              const codigo = row[colunaCodigo];
+              return !codigo || codigo.trim() === '';
+            });
+            
+            if (linhasSemCodigo.length > 0) {
+              const mensagem = `ATENÇÃO: ${linhasSemCodigo.length} tutores no CSV não possuem código. Todos os tutores precisam ter um código válido.`;
+              alert(mensagem);
+              
+              // Adicionar alerta visual com detalhes
+              const alertDiv = document.createElement('div');
+              alertDiv.className = 'bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mt-4';
+              
+              let htmlConteudo = `
+                <strong class="font-bold">Aviso!</strong>
+                <span class="block sm:inline">${mensagem}</span>
+                <div class="mt-2">
+                  <p class="font-bold">Tutores sem código:</p>
+                  <ul class="list-disc pl-5">
+              `;
+              
+              // Listar até 5 exemplos de tutores sem código
+              const exemplos = linhasSemCodigo.slice(0, 5);
+              exemplos.forEach(row => {
+                htmlConteudo += `<li>${row['Nome'] || 'Sem nome'}</li>`;
+              });
+              
+              if (linhasSemCodigo.length > 5) {
+                htmlConteudo += `<li>... e mais ${linhasSemCodigo.length - 5} tutores</li>`;
+              }
+              
+              htmlConteudo += `
+                  </ul>
+                  <p class="mt-2">Estes tutores serão rejeitados pelo sistema. Adicione códigos válidos e tente novamente.</p>
+                </div>
+              `;
+              
+              alertDiv.innerHTML = htmlConteudo;
+              fileInfo.after(alertDiv);
+              
+              // Remover tutores sem código
+              csvData = csvData.filter(row => {
+                const codigo = row[colunaCodigo];
+                return codigo && codigo.trim() !== '';
+              });
+              
+              if (csvData.length === 0) {
+                importBtn.disabled = true;
+                importBtn.classList.add('bg-gray-400', 'cursor-not-allowed');
+                importBtn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+              } else {
+                console.log(`Restaram ${csvData.length} tutores válidos para importação`);
+              }
+            }
           },
           error: function(error) {
             console.error('Erro ao processar CSV:', error);
@@ -266,7 +351,10 @@
             let codigo = '';
             
             // Verificar todas as possibilidades de nomes de colunas para o código
-            if (row['Cód.'] !== undefined && row['Cód.'] !== null && row['Cód.'] !== '') {
+            if (row['Cód'] !== undefined && row['Cód'] !== null && row['Cód'] !== '') {
+              codigo = String(row['Cód']);
+              console.log(`Encontrado código na coluna 'Cód': ${codigo}`);
+            } else if (row['Cód.'] !== undefined && row['Cód.'] !== null && row['Cód.'] !== '') {
               codigo = String(row['Cód.']);
               console.log(`Encontrado código na coluna 'Cód.': ${codigo}`);
             } else if (row['Código'] !== undefined && row['Código'] !== null && row['Código'] !== '') {
@@ -278,6 +366,12 @@
             } else if (row['cod'] !== undefined && row['cod'] !== null && row['cod'] !== '') {
               codigo = String(row['cod']);
               console.log(`Encontrado código na coluna 'cod': ${codigo}`);
+            } else if (row['ID'] !== undefined && row['ID'] !== null && row['ID'] !== '') {
+              codigo = String(row['ID']);
+              console.log(`Encontrado código na coluna 'ID': ${codigo}`);
+            } else if (row['id'] !== undefined && row['id'] !== null && row['id'] !== '') {
+              codigo = String(row['id']);
+              console.log(`Encontrado código na coluna 'id': ${codigo}`);
             } else {
               console.warn('Não foi encontrado código para o cliente:', row['Nome']);
             }

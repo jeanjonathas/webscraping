@@ -45,25 +45,36 @@ const getPool = () => {
 };
 
 // Função para verificar se um cliente existe
-async function verificarCliente(id_vetsoft: number): Promise<Cliente | null> {
+async function verificarCliente(id_vetsoft: number): Promise<number | null> {
   const pool = getPool();
   try {
-    const result = await pool.query(
-      'SELECT * FROM public.clientes WHERE id_vetsoft = $1',
-      [id_vetsoft]
-    );
+    console.log(`Verificando cliente com id_vetsoft ${id_vetsoft}`);
     
-    await pool.end();
-    
-    if (result.rows.length > 0) {
-      return result.rows[0];
+    // Garantir que id_vetsoft seja um número inteiro
+    const id_vetsoft_int = parseInt(String(id_vetsoft), 10);
+    if (isNaN(id_vetsoft_int)) {
+      console.error(`ID VetSoft inválido: ${id_vetsoft}`);
+      return null;
     }
     
-    return null;
+    console.log(`Executando consulta para id_vetsoft = ${id_vetsoft_int}`);
+    const result = await pool.query(
+      'SELECT id FROM public.clientes WHERE id_vetsoft = $1',
+      [id_vetsoft_int]
+    );
+    
+    if (result.rows.length > 0) {
+      console.log(`Cliente encontrado: id interno = ${result.rows[0].id}`);
+      return result.rows[0].id;
+    } else {
+      console.log(`Nenhum cliente encontrado com id_vetsoft ${id_vetsoft_int}`);
+      return null;
+    }
   } catch (error: any) {
-    console.error('Erro ao verificar cliente:', error);
-    await pool.end();
+    console.error(`Erro ao verificar cliente com id_vetsoft ${id_vetsoft}:`, error);
     throw error;
+  } finally {
+    await pool.end();
   }
 }
 
@@ -76,23 +87,32 @@ router.post('/tutores', async (req, res) => {
     console.log(`Importando tutor: ${cliente.nome}`);
     console.log('Dados do tutor:', JSON.stringify(cliente));
     
+    // Verificar se o ID VetSoft está presente
+    if (!cliente.id_vetsoft) {
+      console.error('Tentativa de importar tutor sem ID VetSoft:', cliente.nome);
+      return res.status(400).json({
+        success: false,
+        error: 'O ID VetSoft (campo id_vetsoft) é obrigatório para importação de tutores'
+      });
+    }
+    
+    console.log(`Processando tutor: ${cliente.nome}, ID VetSoft: ${cliente.id_vetsoft}`);
+    
     // Verificar se o cliente já existe
-    let clienteExistente = null;
-    if (cliente.id_vetsoft) {
-      try {
-        clienteExistente = await verificarCliente(cliente.id_vetsoft);
-      } catch (error: any) {
-        console.error('Erro ao verificar cliente existente:', error);
-        return res.status(500).json({
-          success: false,
-          error: `Erro ao verificar cliente existente: ${error.message}`
-        });
-      }
+    let clienteId = null;
+    try {
+      clienteId = await verificarCliente(cliente.id_vetsoft);
+    } catch (error: any) {
+      console.error('Erro ao verificar cliente existente:', error);
+      return res.status(500).json({
+        success: false,
+        error: `Erro ao verificar cliente existente: ${error.message}`
+      });
     }
     
     let resultado;
     
-    if (clienteExistente !== null) {
+    if (clienteId !== null) {
       // Atualizar cliente existente
       const query = `
         UPDATE public.clientes SET 
@@ -246,20 +266,24 @@ router.post('/tutores/batch', async (req, res) => {
       try {
         console.log(`Processando cliente: ${cliente.nome}`);
         
+        // Verificar se o ID VetSoft está presente
+        if (!cliente.id_vetsoft) {
+          console.error('Tentativa de importar tutor sem ID VetSoft:', cliente.nome);
+          throw new Error('O ID VetSoft (campo id_vetsoft) é obrigatório para importação de tutores');
+        }
+        
         // Verificar se o cliente já existe
-        let clienteExistente = null;
-        if (cliente.id_vetsoft) {
-          try {
-            clienteExistente = await verificarCliente(cliente.id_vetsoft);
-          } catch (error: any) {
-            console.error('Erro ao verificar cliente existente:', error);
-            throw new Error(`Erro ao verificar cliente existente: ${error.message}`);
-          }
+        let clienteId = null;
+        try {
+          clienteId = await verificarCliente(cliente.id_vetsoft);
+        } catch (error: any) {
+          console.error('Erro ao verificar cliente existente:', error);
+          throw new Error(`Erro ao verificar cliente existente: ${error.message}`);
         }
         
         let resultado;
         
-        if (clienteExistente !== null) {
+        if (clienteId !== null) {
           // Atualizar cliente existente
           const query = `
             UPDATE public.clientes SET 
@@ -286,6 +310,7 @@ router.post('/tutores/batch', async (req, res) => {
           `;
           
           try {
+            console.log(`Atualizando cliente existente com id_vetsoft ${cliente.id_vetsoft}`);
             const result = await pool.query(query, [
               cliente.tipo,
               cliente.nome,
@@ -308,6 +333,7 @@ router.post('/tutores/batch', async (req, res) => {
             ]);
             
             resultado = { data: result.rows[0], atualizado: true };
+            console.log(`Cliente atualizado com sucesso: ${cliente.nome}, id_vetsoft: ${cliente.id_vetsoft}`);
           } catch (error: any) {
             console.error('Erro ao atualizar cliente:', error);
             throw new Error(`Erro ao atualizar cliente: ${error.message}`);
@@ -316,21 +342,26 @@ router.post('/tutores/batch', async (req, res) => {
           // Inserir novo cliente
           const query = `
             INSERT INTO public.clientes (
-              id_vetsoft, tipo, nome, cpf, rg, nascimento, cep, estado, cidade, 
-              bairro, endereco_tipo, endereco_logradouro, endereco_numero, 
-              endereco_complemento, local_trabalho, grupo, como_conheceu, observacoes
+              id_vetsoft, tipo, nome, cpf, rg, nascimento, cep, estado, cidade, bairro,
+              endereco_tipo, endereco_logradouro, endereco_numero, endereco_complemento,
+              local_trabalho, grupo, como_conheceu, observacoes, data_cadastro
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, CURRENT_TIMESTAMP
             )
             RETURNING *
           `;
           
           try {
-            // Verificar se id_vetsoft é um número válido
-            console.log(`Inserindo cliente: ${cliente.nome}, ID VetSoft: ${cliente.id_vetsoft}`);
+            // Garantir que id_vetsoft seja um número inteiro
+            const id_vetsoft_int = parseInt(String(cliente.id_vetsoft), 10);
+            if (isNaN(id_vetsoft_int)) {
+              throw new Error(`ID VetSoft inválido: ${cliente.id_vetsoft}`);
+            }
+            
+            console.log(`Inserindo cliente: ${cliente.nome}, ID VetSoft: ${id_vetsoft_int}`);
             
             const result = await pool.query(query, [
-              cliente.id_vetsoft,
+              id_vetsoft_int,
               cliente.tipo,
               cliente.nome,
               cliente.cpf || null,
@@ -351,6 +382,7 @@ router.post('/tutores/batch', async (req, res) => {
             ]);
             
             resultado = { data: result.rows[0], atualizado: false };
+            console.log(`Cliente inserido com sucesso: ${cliente.nome}, ID VetSoft: ${id_vetsoft_int}, ID interno: ${result.rows[0].id}`);
           } catch (error: any) {
             console.error('Erro ao inserir cliente:', error);
             throw new Error(`Erro ao inserir cliente: ${error.message}`);

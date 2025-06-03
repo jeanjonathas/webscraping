@@ -15,6 +15,7 @@ import esteticaRouter from './routes/estetica';
 import buscaClienteRouter from './routes/busca-cliente';
 import buscaClienteResumidoRouter from './routes/busca-cliente-resumido';
 import relatorioAnimaisRouter from './routes/relatorioAnimais';
+import testeDBRouter from './routes/testeDB';
 import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -98,6 +99,9 @@ app.use('/relatorio-animais', apiKeyAuth, relatorioAnimaisRouter);
 
 // Rotas de configuração (sem proteção de API Key)
 app.use('/config', configRouter);
+
+// Rotas de teste do banco de dados (sem proteção de API Key)
+app.use('/teste-db', testeDBRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {

@@ -50,7 +50,7 @@ async function verificarAnimal(id_vetsoft: number): Promise<Animal | null> {
   const pool = getPool();
   try {
     const result = await pool.query(
-      'SELECT * FROM dranimal.pacientes WHERE id_vetsoft = $1',
+      'SELECT * FROM public.pacientes WHERE id_vetsoft = $1',
       [id_vetsoft]
     );
     
@@ -73,7 +73,7 @@ async function buscarClienteId(id_vetsoft_cliente: number): Promise<number | nul
   const pool = getPool();
   try {
     const result = await pool.query(
-      'SELECT id FROM dranimal.clientes WHERE id_vetsoft = $1',
+      'SELECT id FROM public.clientes WHERE id_vetsoft = $1',
       [id_vetsoft_cliente]
     );
     
