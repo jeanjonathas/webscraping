@@ -87,6 +87,18 @@ router.post('/tutores', async (req, res) => {
     console.log(`Importando tutor: ${cliente.nome}`);
     console.log('Dados do tutor:', JSON.stringify(cliente));
     
+    // Tratar espaços extras em todos os campos de texto
+    if (cliente.nome) cliente.nome = cliente.nome.trim();
+    if (cliente.endereco_logradouro) cliente.endereco_logradouro = cliente.endereco_logradouro.trim();
+    if (cliente.bairro) cliente.bairro = cliente.bairro.trim();
+    if (cliente.cidade) cliente.cidade = cliente.cidade.trim();
+    if (cliente.estado) cliente.estado = cliente.estado.trim();
+    if (cliente.endereco_complemento) cliente.endereco_complemento = cliente.endereco_complemento.trim();
+    if (cliente.local_trabalho) cliente.local_trabalho = cliente.local_trabalho.trim();
+    if (cliente.grupo) cliente.grupo = cliente.grupo.trim();
+    if (cliente.como_conheceu) cliente.como_conheceu = cliente.como_conheceu.trim();
+    if (cliente.observacoes) cliente.observacoes = cliente.observacoes.trim();
+    
     // Verificar se o ID VetSoft está presente
     if (!cliente.id_vetsoft) {
       console.error('Tentativa de importar tutor sem ID VetSoft:', cliente.nome);
@@ -264,6 +276,18 @@ router.post('/tutores/batch', async (req, res) => {
     
     for (const cliente of clientes) {
       try {
+        // Tratar espaços extras em todos os campos de texto
+        if (cliente.nome) cliente.nome = cliente.nome.trim();
+        if (cliente.endereco_logradouro) cliente.endereco_logradouro = cliente.endereco_logradouro.trim();
+        if (cliente.bairro) cliente.bairro = cliente.bairro.trim();
+        if (cliente.cidade) cliente.cidade = cliente.cidade.trim();
+        if (cliente.estado) cliente.estado = cliente.estado.trim();
+        if (cliente.endereco_complemento) cliente.endereco_complemento = cliente.endereco_complemento.trim();
+        if (cliente.local_trabalho) cliente.local_trabalho = cliente.local_trabalho.trim();
+        if (cliente.grupo) cliente.grupo = cliente.grupo.trim();
+        if (cliente.como_conheceu) cliente.como_conheceu = cliente.como_conheceu.trim();
+        if (cliente.observacoes) cliente.observacoes = cliente.observacoes.trim();
+        
         console.log(`Processando cliente: ${cliente.nome}`);
         
         // Verificar se o ID VetSoft está presente

@@ -22,6 +22,7 @@ interface Animal {
   esterilizacao?: string;
   observacoes?: string;
   data_cadastro?: string | null;
+  data_obito?: string | null;
   // Campos temporários para processamento
   tutor_id?: string | number;
   tutor_nome?: string;
@@ -151,11 +152,11 @@ router.post('/animais', async (req, res) => {
           animal.sexo || null,
           animal.idade_anos || null,
           animal.idade_meses || null,
-          animal.dt_nascimento ? new Date(animal.dt_nascimento) : null,
+          safeDate(animal.dt_nascimento),
           animal.porte || null,
           animal.pelagem || null,
           animal.microchip_anilha || null,
-          animal.data_microchip ? new Date(animal.data_microchip) : null,
+          safeDate(animal.data_microchip),
           animal.pedigree || null,
           animal.esterilizacao || null,
           animal.observacoes || null,
@@ -193,14 +194,14 @@ router.post('/animais', async (req, res) => {
           animal.sexo || null,
           animal.idade_anos || null,
           animal.idade_meses || null,
-          animal.dt_nascimento ? new Date(animal.dt_nascimento) : null,
+          safeDate(animal.dt_nascimento),
           animal.porte || null,
           animal.pelagem || null,
           animal.microchip_anilha || null,
-          animal.data_microchip ? new Date(animal.data_microchip) : null,
+          safeDate(animal.data_microchip),
           animal.pedigree || null,
           animal.esterilizacao || null,
-          animal.data_cadastro ? new Date(animal.data_cadastro) : new Date(),
+          safeDate(animal.data_cadastro) || new Date(),
           animal.observacoes || null
         ]);
         
@@ -296,8 +297,9 @@ router.post('/animais/batch', async (req, res) => {
               pedigree = $13, 
               esterilizacao = $14, 
               observacoes = $15,
+              data_obito = $16,
               data_atualizacao = CURRENT_TIMESTAMP
-            WHERE id_vetsoft = $16
+            WHERE id_vetsoft = $17
             RETURNING *
           `;
           
@@ -310,11 +312,11 @@ router.post('/animais/batch', async (req, res) => {
               animal.sexo || null,
               animal.idade_anos || null,
               animal.idade_meses || null,
-              animal.dt_nascimento ? new Date(animal.dt_nascimento) : null,
+              safeDate(animal.dt_nascimento),
               animal.porte || null,
               animal.pelagem || null,
               animal.microchip_anilha || null,
-              animal.data_microchip ? new Date(animal.data_microchip) : null,
+              safeDate(animal.data_microchip),
               animal.pedigree || null,
               animal.esterilizacao || null,
               animal.observacoes || null,
@@ -332,7 +334,7 @@ router.post('/animais/batch', async (req, res) => {
             INSERT INTO public.pacientes (
               id_vetsoft, cliente_id, nome, especie, raca, sexo, idade_anos, idade_meses,
               dt_nascimento, porte, pelagem, microchip_anilha, data_microchip, pedigree,
-              esterilizacao, status, data_cadastro, observacoes
+              esterilizacao, data_cadastro, observacoes, data_obito
             ) VALUES (
               $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
             )
@@ -349,15 +351,16 @@ router.post('/animais/batch', async (req, res) => {
               animal.sexo || null,
               animal.idade_anos || null,
               animal.idade_meses || null,
-              animal.dt_nascimento ? new Date(animal.dt_nascimento) : null,
+              safeDate(animal.dt_nascimento),
               animal.porte || null,
               animal.pelagem || null,
               animal.microchip_anilha || null,
-              animal.data_microchip ? new Date(animal.data_microchip) : null,
+              safeDate(animal.data_microchip),
               animal.pedigree || null,
               animal.esterilizacao || null,
-              animal.data_cadastro ? new Date(animal.data_cadastro) : new Date(),
-              animal.observacoes || null
+              safeDate(animal.data_cadastro) || new Date(),
+              animal.observacoes || null,
+              safeDate(animal.data_obito)
             ]);
             
             resultado = { data: result.rows[0], atualizado: false };
@@ -560,9 +563,8 @@ router.post('/animais/csv', async (req, res) => {
                 data_microchip = $12, 
                 pedigree = $13, 
                 esterilizacao = $14, 
-                status = $15,
-                observacoes = $16,
-                data_atualizacao = CURRENT_TIMESTAMP
+                observacoes = $15,
+                data_obito = $16
               WHERE id_vetsoft = $17
               RETURNING *
             `;
@@ -575,13 +577,14 @@ router.post('/animais/csv', async (req, res) => {
               animal.sexo || null,
               animal.idade_anos || null,
               animal.idade_meses || null,
-              animal.dt_nascimento ? new Date(animal.dt_nascimento) : null,
+              safeDate(animal.dt_nascimento),
               animal.porte || null,
               animal.pelagem || null,
               animal.microchip_anilha || null,
-              animal.data_microchip ? new Date(animal.data_microchip) : null,
+              safeDate(animal.data_microchip),
               animal.pedigree || null,
               animal.esterilizacao || null,
+              safeDate(animal.data_obito),
               animal.observacoes || null,
               animal.id_vetsoft
             ]);
@@ -593,7 +596,7 @@ router.post('/animais/csv', async (req, res) => {
               INSERT INTO public.pacientes (
                 id_vetsoft, cliente_id, nome, especie, raca, sexo, idade_anos, idade_meses,
                 dt_nascimento, porte, pelagem, microchip_anilha, data_microchip, pedigree,
-                esterilizacao, status, data_cadastro, observacoes
+                esterilizacao, data_cadastro, observacoes, data_obito
               ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
               )
@@ -609,15 +612,16 @@ router.post('/animais/csv', async (req, res) => {
               animal.sexo || null,
               animal.idade_anos || null,
               animal.idade_meses || null,
-              animal.dt_nascimento ? new Date(animal.dt_nascimento) : null,
+              safeDate(animal.dt_nascimento),
               animal.porte || null,
               animal.pelagem || null,
               animal.microchip_anilha || null,
-              animal.data_microchip ? new Date(animal.data_microchip) : null,
+              safeDate(animal.data_microchip),
               animal.pedigree || null,
               animal.esterilizacao || null,
-              animal.data_cadastro ? new Date(animal.data_cadastro) : new Date(),
-              animal.observacoes || null
+              safeDate(animal.data_cadastro) || new Date(),
+              animal.observacoes || null,
+              safeDate(animal.data_obito)
             ]);
             
             resultado = { data: result.rows[0], atualizado: false };
@@ -674,6 +678,23 @@ router.post('/animais/csv', async (req, res) => {
     });
   }
 });
+
+// Função para validar se uma string de data é válida antes de converter para Date
+function isValidDate(dateString: string | null | undefined): boolean {
+  if (!dateString) return false;
+  
+  // Tenta criar uma data válida
+  const date = new Date(dateString);
+  
+  // Verifica se a data é válida (não é NaN)
+  return !isNaN(date.getTime());
+}
+
+// Função para converter string para data de forma segura
+function safeDate(dateString: string | null | undefined): Date | null {
+  if (!dateString || !isValidDate(dateString)) return null;
+  return new Date(dateString);
+}
 
 // Função para mapear colunas do CSV para campos do banco de dados
 function mapearColuna(coluna: string): string {
