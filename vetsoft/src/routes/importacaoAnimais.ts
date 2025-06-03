@@ -650,9 +650,9 @@ router.post('/animais/csv', async (req, res) => {
               INSERT INTO public.pacientes (
                 id_vetsoft, cliente_id, nome, especie, raca, sexo, idade_anos, idade_meses,
                 dt_nascimento, porte, pelagem, microchip_anilha, data_microchip, pedigree,
-                esterilizacao, data_cadastro, observacoes, data_obito
+                esterilizacao, data_cadastro, observacoes, data_obito, peso
               ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
               )
               RETURNING *
             `;
