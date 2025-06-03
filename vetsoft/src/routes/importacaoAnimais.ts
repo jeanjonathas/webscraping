@@ -472,21 +472,42 @@ router.post('/animais/csv', async (req, res) => {
       try {
         let clienteId = null;
         
-        // Verificar se temos o ID do tutor
+        // Verificar se temos o ID do tutor em diferentes formatos de coluna
+        let tutorId = null;
+        
+        // Verificar diferentes formatos possíveis da coluna tutor_id
         if (animal.tutor_id) {
-          clienteId = await buscarClienteId(parseInt(animal.tutor_id));
+          tutorId = animal.tutor_id;
+        } else if (animal['Tutor ID']) {
+          tutorId = animal['Tutor ID'];
+          animal.tutor_id = tutorId; // Normalizar para o formato padrão
+        } else if (animal['tutor id']) {
+          tutorId = animal['tutor id'];
+          animal.tutor_id = tutorId; // Normalizar para o formato padrão
+        } else if (animal['TUTOR_ID']) {
+          tutorId = animal['TUTOR_ID'];
+          animal.tutor_id = tutorId; // Normalizar para o formato padrão
+        }
+        
+        console.log(`Processando animal ${animal.nome}, tutorId encontrado: ${tutorId}`);
+        
+        if (tutorId) {
+          clienteId = await buscarClienteId(parseInt(tutorId.toString()));
           if (clienteId) {
-            console.log(`Cliente com ID VetSoft ${animal.tutor_id} encontrado`);
+            console.log(`Cliente com ID VetSoft ${tutorId} encontrado`);
             animal.cliente_id = clienteId;
             
             // Remover campos temporários
             delete animal.tutor_id;
             delete animal.tutor_nome;
+            if (animal['Tutor ID']) delete animal['Tutor ID'];
+            if (animal['tutor id']) delete animal['tutor id'];
+            if (animal['TUTOR_ID']) delete animal['TUTOR_ID'];
             
             // Adicionar o animal à lista para processamento
             animais.push(animal);
           } else {
-            console.warn(`Cliente com ID VetSoft ${animal.tutor_id} não encontrado. Animal ${animal.nome} não será importado.`);
+            console.warn(`Cliente com ID VetSoft ${tutorId} não encontrado. Animal ${animal.nome} não será importado.`);
           }
         } else {
           console.warn(`Animal ${animal.nome} não possui ID de tutor. Animal não será importado.`);

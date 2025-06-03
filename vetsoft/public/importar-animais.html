@@ -353,17 +353,26 @@
                                 }
                                 
                                 // Verificar se há coluna tutor_id no CSV
-                                const headers = results.meta.fields || [];
-                                const hasTutorId = headers.some(header => header === 'tutor_id');
-                                
-                                if (!hasTutorId) {
-                                    // Exibir aviso sobre a falta da coluna tutor_id
-                                    const warningMessage = document.createElement('div');
-                                    warningMessage.className = 'alert alert-warning mt-2';
-                                    warningMessage.innerHTML = '<strong>Atenção:</strong> O arquivo CSV não contém a coluna "tutor_id". ' +
-                                        'Todos os animais precisam ter um ID de tutor válido para serem importados.';
-                                    fileName.parentNode.appendChild(warningMessage);
-                                }
+                const headers = results.meta.fields || [];
+                console.log('Cabeçalhos detectados:', headers);
+                
+                // Verificar se existe alguma coluna que contenha 'tutor' e 'id'
+                const hasTutorId = headers.some(header => 
+                    header === 'tutor_id' || 
+                    header === 'Tutor ID' || 
+                    header === 'tutor id' ||
+                    header === 'TUTOR_ID' ||
+                    header.toLowerCase().includes('tutor') && header.toLowerCase().includes('id')
+                );
+                
+                if (!hasTutorId) {
+                    // Exibir aviso sobre a falta da coluna tutor_id
+                    const warningMessage = document.createElement('div');
+                    warningMessage.className = 'alert alert-warning mt-2';
+                    warningMessage.innerHTML = '<strong>Atenção:</strong> O arquivo CSV não contém a coluna "tutor_id". ' +
+                        'Todos os animais precisam ter um ID de tutor válido para serem importados.';
+                    fileName.parentNode.appendChild(warningMessage);
+                }
                                 
                                 console.log(`Arquivo carregado com ${results.data.length} registros`);
                                 console.log('Exemplo do primeiro registro:', results.data[0]);
@@ -411,7 +420,16 @@
                     
                     // Verificar se há coluna tutor_id no CSV
                     const headers = parsedData.meta.fields || [];
-                    const hasTutorId = headers.some(header => header === 'tutor_id');
+                    console.log('Cabeçalhos detectados na importação:', headers);
+                    
+                    // Verificar se existe alguma coluna que contenha 'tutor' e 'id'
+                    const hasTutorId = headers.some(header => 
+                        header === 'tutor_id' || 
+                        header === 'Tutor ID' || 
+                        header === 'tutor id' ||
+                        header === 'TUTOR_ID' ||
+                        header.toLowerCase().includes('tutor') && header.toLowerCase().includes('id')
+                    );
                     
                     if (!hasTutorId) {
                         // Mostrar aviso de validação
