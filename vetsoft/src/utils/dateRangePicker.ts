@@ -168,6 +168,7 @@ export async function configurarPeriodoPersonalizado(
       return meses[indice];
     }
     
+    // Navegar para o mês final (que é o mês que precisamos para selecionar ambas as datas)
     // Primeiro precisamos verificar o mês atual exibido no calendário
     const mesEsquerdoAtual = await page.locator('.drp-calendar.left .month').textContent();
     const mesDireitoAtual = await page.locator('.drp-calendar.right .month').textContent();
@@ -183,25 +184,26 @@ export async function configurarPeriodoPersonalizado(
     const mesesNomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
     const mesAtualNumero = mesesNomes.findIndex(m => mesAtualNome.toLowerCase().includes(m)) + 1;
     
+    // Determinar qual mês precisamos navegar (mês final)
     console.log(`Mês atual do calendário: ${mesAtualNumero}, Ano atual do calendário: ${anoAtualCalendario}`);
-    console.log(`Mês desejado: ${mesFinal}, Ano desejado: ${anoFinal}`);
+    console.log(`Mês final desejado: ${mesFinal}, Ano final desejado: ${anoFinal}`);
     
-    // Calcular diferença de meses entre o mês atual do calendário e o mês desejado
-    const diferencaMeses = (anoFinal - anoAtualCalendario) * 12 + (mesFinal - mesAtualNumero);
-    console.log(`Diferença de meses: ${diferencaMeses}`);
+    // Calcular diferença de meses entre o mês atual do calendário e o mês final desejado
+    const diferencaMesesFinal = (anoFinal - anoAtualCalendario) * 12 + (mesFinal - mesAtualNumero);
+    console.log(`Diferença de meses para o mês final: ${diferencaMesesFinal}`);
     
-    // Navegar para o mês correto
-    if (diferencaMeses !== 0) {
-      if (diferencaMeses > 0) {
+    // Navegar para o mês final
+    if (diferencaMesesFinal !== 0) {
+      if (diferencaMesesFinal > 0) {
         // Navegar para frente
-        console.log(`Clicando no botão 'next' ${diferencaMeses} vezes para chegar a ${mesFinal}/${anoFinal}...`);
-        for (let i = 0; i < diferencaMeses; i++) {
+        console.log(`Clicando no botão 'next' ${diferencaMesesFinal} vezes para chegar a ${mesFinal}/${anoFinal}...`);
+        for (let i = 0; i < diferencaMesesFinal; i++) {
           await page.locator('.drp-calendar.right .next.available').click();
           await page.waitForTimeout(500);
         }
       } else {
         // Navegar para trás
-        const passosTras = Math.abs(diferencaMeses);
+        const passosTras = Math.abs(diferencaMesesFinal);
         console.log(`Clicando no botão 'prev' ${passosTras} vezes para chegar a ${mesFinal}/${anoFinal}...`);
         for (let i = 0; i < passosTras; i++) {
           await page.locator('.drp-calendar.left .prev.available').click();
@@ -241,28 +243,41 @@ export async function configurarPeriodoPersonalizado(
     
     const mesEsquerdoNome = mesEsquerdoMatch?.[1] || '';
     const mesDireitoNome = mesDireitoMatch?.[1] || '';
+    const anoEsquerdo = parseInt(mesEsquerdoMatch?.[2] || '0');
+    const anoDireito = parseInt(mesDireitoMatch?.[2] || '0');
     
-    console.log(`Mês esquerdo: ${mesEsquerdoNome}, Mês direito: ${mesDireitoNome}`);
+    console.log(`Mês esquerdo: ${mesEsquerdoNome}, Ano esquerdo: ${anoEsquerdo}`);
+    console.log(`Mês direito: ${mesDireitoNome}, Ano direito: ${anoDireito}`);
     
     // Determinar qual calendário usar para a data final
     const mesFinalNome = obterNomeMes(mesFinal - 1); // -1 porque os meses em JS são 0-indexed
     
-    // Determinar qual calendário usar com base no mês
-    const usarCalendarioEsquerdo = mesEsquerdoNome.toLowerCase().includes(mesFinalNome.toLowerCase());
-    const usarCalendarioDireito = mesDireitoNome.toLowerCase().includes(mesFinalNome.toLowerCase());
+    // Determinar qual calendário usar com base no mês e ano
+    const mesEsquerdoCorreto = mesEsquerdoNome.toLowerCase().includes(mesFinalNome.toLowerCase()) && anoEsquerdo === anoFinal;
+    const mesDireitoCorreto = mesDireitoNome.toLowerCase().includes(mesFinalNome.toLowerCase()) && anoDireito === anoFinal;
     
-    console.log(`Usar calendário esquerdo: ${usarCalendarioEsquerdo}, Usar calendário direito: ${usarCalendarioDireito}`);
+    console.log(`Mês/ano final esperado: ${mesFinalNome}/${anoFinal}`);
+    console.log(`Calendário esquerdo correto: ${mesEsquerdoCorreto}, Calendário direito correto: ${mesDireitoCorreto}`);
     
-    // Se for o mesmo mês, sempre usar o calendário onde o mês foi encontrado
-    // Se não for o mesmo mês, usar o calendário onde o mês final foi encontrado
-    // Se não encontrou o mês em nenhum dos calendários, usar o esquerdo por padrão
-    let seletorCalendario;
+    // Determinar qual seletor usar para o calendário
+    let seletorCalendario = '.drp-calendar.right';
+    
+    // Prioridade de seleção do calendário:
+    // 1. Se for o mesmo mês da data inicial, usar o calendário esquerdo
+    // 2. Se o mês final estiver no calendário esquerdo, usar o esquerdo
+    // 3. Se o mês final estiver no calendário direito, usar o direito
+    // 4. Se não encontrou o mês em nenhum calendário, usar o direito por padrão
     if (mesmoMes) {
-      // Se for o mesmo mês, usar o mesmo calendário onde a data inicial foi selecionada
+      console.log('Usando calendário esquerdo porque o período está no mesmo mês');
       seletorCalendario = '.drp-calendar.left';
-      console.log('Período no mesmo mês, usando o calendário esquerdo para ambas as datas');
+    } else if (mesEsquerdoCorreto && !mesDireitoCorreto) {
+      console.log('Usando calendário esquerdo porque o mês final está apenas nele');
+      seletorCalendario = '.drp-calendar.left';
+    } else if (!mesEsquerdoCorreto && mesDireitoCorreto) {
+      console.log('Usando calendário direito porque o mês final está apenas nele');
+      seletorCalendario = '.drp-calendar.right';
     } else {
-      seletorCalendario = usarCalendarioEsquerdo ? '.drp-calendar.left' : (usarCalendarioDireito ? '.drp-calendar.right' : '.drp-calendar.left');
+      console.warn(`Mês ${mesFinalNome}/${anoFinal} não encontrado em nenhum calendário, usando o direito por padrão`);
     }
     console.log(`Usando seletor de calendário: ${seletorCalendario}`);
     
