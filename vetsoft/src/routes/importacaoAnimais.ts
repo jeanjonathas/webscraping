@@ -23,6 +23,7 @@ interface Animal {
   observacoes?: string;
   data_cadastro?: string | null;
   data_obito?: string | null;
+  peso?: number | string;
   // Campos temporários para processamento
   tutor_id?: string | number;
   tutor_nome?: string;
@@ -140,8 +141,9 @@ router.post('/animais', async (req, res) => {
           pedigree = $13, 
           esterilizacao = $14, 
           observacoes = $15,
+          peso = $16,
           data_atualizacao = CURRENT_TIMESTAMP
-        WHERE id_vetsoft = $16
+        WHERE id_vetsoft = $17
         RETURNING *
       `;
       
@@ -162,6 +164,7 @@ router.post('/animais', async (req, res) => {
           animal.pedigree || null,
           animal.esterilizacao || null,
           animal.observacoes || null,
+          animal.peso || null,
           animal.id_vetsoft
         ]);
         
@@ -179,9 +182,9 @@ router.post('/animais', async (req, res) => {
         INSERT INTO public.pacientes (
           id_vetsoft, cliente_id, nome, especie, raca, sexo, idade_anos, idade_meses,
           dt_nascimento, porte, pelagem, microchip_anilha, data_microchip, pedigree,
-          esterilizacao, data_cadastro, observacoes
+          esterilizacao, data_cadastro, observacoes, peso
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
         )
         RETURNING *
       `;
@@ -203,8 +206,9 @@ router.post('/animais', async (req, res) => {
           safeDate(animal.data_microchip),
           animal.pedigree || null,
           animal.esterilizacao || null,
-          safeDate(animal.data_cadastro) || new Date(),
-          animal.observacoes || null
+          safeDate(animal.data_cadastro),
+          animal.observacoes || null,
+          animal.peso || null
         ]);
         
         resultado = { data: result.rows[0], atualizado: false };
@@ -302,8 +306,9 @@ router.post('/animais/batch', async (req, res) => {
               esterilizacao = $14, 
               observacoes = $15,
               data_obito = $16,
+              peso = $17,
               data_atualizacao = CURRENT_TIMESTAMP
-            WHERE id_vetsoft = $17
+            WHERE id_vetsoft = $18
             RETURNING *
           `;
           
@@ -338,9 +343,9 @@ router.post('/animais/batch', async (req, res) => {
             INSERT INTO public.pacientes (
               id_vetsoft, cliente_id, nome, especie, raca, sexo, idade_anos, idade_meses,
               dt_nascimento, porte, pelagem, microchip_anilha, data_microchip, pedigree,
-              esterilizacao, data_cadastro, observacoes, data_obito
+              esterilizacao, data_cadastro, observacoes, data_obito, peso
             ) VALUES (
-              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+              $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
             )
             RETURNING *
           `;
@@ -362,7 +367,7 @@ router.post('/animais/batch', async (req, res) => {
               safeDate(animal.data_microchip),
               animal.pedigree || null,
               animal.esterilizacao || null,
-              safeDate(animal.data_cadastro) || new Date(),
+              safeDate(animal.data_cadastro),
               animal.observacoes || null,
               safeDate(animal.data_obito)
             ]);
@@ -668,7 +673,7 @@ router.post('/animais/csv', async (req, res) => {
               safeDate(animal.data_microchip),
               animal.pedigree || null,
               animal.esterilizacao || null,
-              safeDate(animal.data_cadastro) || new Date(),
+              safeDate(animal.data_cadastro),
               animal.observacoes || null,
               safeDate(animal.data_obito)
             ]);
@@ -761,7 +766,7 @@ function mapearColuna(coluna: string): string {
     'Sexo': 'sexo',
     'Idade': 'idade_texto', // Campo temporário para processamento
     'Data Cadastro': 'data_cadastro',
-    'Peso': 'peso', // Não usado no banco, apenas informativo
+    'Peso': 'peso', // Campo usado no banco para armazenar o peso do animal
     'Data Peso': 'data_peso', // Não usado no banco, apenas informativo
     'Porte': 'porte',
     'Data Nascimento': 'dt_nascimento',
