@@ -369,7 +369,8 @@ router.post('/animais/batch', async (req, res) => {
               animal.esterilizacao || null,
               safeDate(animal.data_cadastro),
               animal.observacoes || null,
-              safeDate(animal.data_obito)
+              safeDate(animal.data_obito),
+              animal.peso || null
             ]);
             
             resultado = { data: result.rows[0], atualizado: false };
@@ -472,6 +473,18 @@ router.post('/animais/csv', async (req, res) => {
       if (animal.id_vetsoft) animal.id_vetsoft = parseInt(animal.id_vetsoft.toString());
       if (animal.idade_anos) animal.idade_anos = parseInt(animal.idade_anos);
       if (animal.idade_meses) animal.idade_meses = parseInt(animal.idade_meses);
+      
+      // Converter campo peso do formato brasileiro (vírgula) para formato numérico (ponto)
+      if (animal.peso) {
+        // Verifica se é uma string e contém vírgula
+        if (typeof animal.peso === 'string' && animal.peso.includes(',')) {
+          // Substitui vírgula por ponto para formato numérico
+          animal.peso = parseFloat(animal.peso.replace(',', '.'));
+        } else if (typeof animal.peso === 'string') {
+          // Se for string sem vírgula, converte para número
+          animal.peso = parseFloat(animal.peso);
+        }
+      }
       
       // Converter campo de esterilização para o formato esperado
       if (animal.esterilizacao === 'Sim') {
@@ -675,7 +688,8 @@ router.post('/animais/csv', async (req, res) => {
               animal.esterilizacao || null,
               safeDate(animal.data_cadastro),
               animal.observacoes || null,
-              safeDate(animal.data_obito)
+              safeDate(animal.data_obito),
+              animal.peso || null
             ]);
             
             resultado = { data: result.rows[0], atualizado: false };

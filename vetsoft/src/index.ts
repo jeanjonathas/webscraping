@@ -75,8 +75,8 @@ function formatarArray(valor: string | null | undefined): string[] {
 }
 
 // Configuração do Express
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Configurar o Express para formatar JSON de forma legível
