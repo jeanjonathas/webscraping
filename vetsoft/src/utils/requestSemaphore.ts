@@ -109,8 +109,12 @@ export function releaseLock(operation: string): boolean {
       waitingOperations.delete(operation);
     }
     
-    console.log(`Semáforo liberado por "${operation}". Requisições aguardando: ${queueSize}`);
+    console.log(`=== SEMÁFORO LIBERADO === Operação "${operation}" liberou o semáforo. Requisições aguardando: ${queueSize}`);
     return true;
+  } else if (isLocked) {
+    console.warn(`Tentativa de liberar semáforo por "${operation}", mas o semáforo está bloqueado por "${currentOperation}"`); 
+  } else {
+    console.warn(`Tentativa de liberar semáforo por "${operation}", mas o semáforo já está livre`);
   }
   
   return false;
@@ -234,9 +238,10 @@ export async function withLockWait<T>(
     
     // Garantir que o bloqueio seja liberado mesmo em caso de erro, a menos que keepLock seja true
     if (!keepLock) {
+      console.log(`=== LIBERANDO SEMÁFORO AUTOMATICAMENTE === Operação "${operation}" está finalizando e vai liberar o semáforo`);
       releaseLock(operation);
     } else {
-      console.log(`Mantendo semáforo bloqueado para "${operation}" (keepLock=true)`);
+      console.log(`=== MANTENDO SEMÁFORO BLOQUEADO === Operação "${operation}" está finalizando mas manterá o semáforo bloqueado (keepLock=true)`);
     }
   }
 }

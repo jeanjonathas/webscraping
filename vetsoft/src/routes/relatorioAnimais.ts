@@ -124,45 +124,38 @@ router.get('/', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
   const headless = !showBrowser;
   
-  // Definir um ID de operação único para esta requisição
-  const operationId = `relatorio-animais-${Date.now()}`;
-  
   console.log(`Rota /relatorio-animais foi chamada com período: ${periodo}`);
   console.log(`Parâmetros: showBrowser=${showBrowser}, forceRefresh=${forceRefresh}`);
   
   try {
-    // Usar withLockWait para adquirir o semáforo para toda a operação
-    const result = await withLockWait<{ success: boolean; data?: AnimalCompleto[]; csv?: string; total?: number; error?: string }>(operationId, async () => {
-      console.log(`Semáforo adquirido para ${operationId}, iniciando login...`);
+    // IMPORTANTE: Primeiro fazer login diretamente
+    // A função ensureLoggedIn já usa withLockWait internamente
+    console.log('Obtendo página com login...');
+    const page = await ensureLoggedIn(headless, true); // keepLock=true para manter o semáforo após o login
+    
+    console.log('Login concluído, iniciando navegação para relatório de animais...');
+    
+    // Navegar para a página de relatórios
+    await page.goto('https://dranimal.vetsoft.com.br/m/relatorios/', { waitUntil: 'networkidle' });
+    await page.waitForTimeout(2000);
+    await page.getByRole('link', { name: 'Animais' }).click();
+    await page.waitForTimeout(2000);
+    await page.getByRole('link', { name: 'Lista de Animais' }).click();
+    await page.waitForTimeout(2000);
+    await page.getByRole('button', { name: ' Colunas' }).click();
+    await page.getByRole('checkbox', { name: '#' }).uncheck();
+    await page.getByRole('button', { name: '+ ' }).click();
+    await page.getByLabel('Visualizar').selectOption('3');
+    console.log('Navegação concluída com sucesso, página carregada.');
+    
+    
+    // Configurar o período de consulta
+    if (periodo !== 'todos') {
+      console.log(`Configurando período: ${periodo}`);
       
-      // Obter página com login já feito, mas sem manter o semáforo de login (keepLock=false)
-      // pois já estamos dentro do semáforo principal
-      console.log('Obtendo página com login...');
-      const page = await ensureLoggedIn(headless, false); // keepLock=false pois já estamos dentro do semáforo principal
-      
-      console.log('Login concluído, iniciando navegação para relatório de animais...');
-      
-      // Navegar para a página de relatórios
-      await page.goto('https://dranimal.vetsoft.com.br/m/relatorios/', { waitUntil: 'networkidle' });
-      await page.waitForTimeout(2000);
-      await page.getByRole('link', { name: 'Animais' }).click();
-      await page.waitForTimeout(2000);
-      await page.getByRole('link', { name: 'Lista de Animais' }).click();
-      await page.waitForTimeout(2000);
-      await page.getByRole('button', { name: ' Colunas' }).click();
-      await page.getByRole('checkbox', { name: '#' }).uncheck();
-      await page.getByRole('button', { name: '+ ' }).click();
-      await page.getByLabel('Visualizar').selectOption('3');
-      console.log('Navegação concluída com sucesso, página carregada.');
-      
-      
-      // Configurar o período de consulta
-      if (periodo !== 'todos') {
-        console.log(`Configurando período: ${periodo}`);
-        
-        // Clicar no campo de data
-        await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
-        await page.waitForTimeout(1000);
+      // Clicar no campo de data
+      await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
+      await page.waitForTimeout(1000);
       
       // Clicar em "Escolher período"
         await page.getByText('Escolher período').click();
@@ -373,14 +366,12 @@ router.get('/', async (req, res) => {
       
       console.log(`Extraídos ${animais.length} animais`);
       
-      return {
+      // Retornar os dados extraídos
+      return res.json({
         success: true,
         data: animais,
         total: animais.length
-      };
-    }, 300000); // Aguardar até 5 minutos pelo bloqueio
-    
-    return res.json(result);
+      });
     
   } catch (error: any) {
     console.error('Erro durante a extração:', error);
