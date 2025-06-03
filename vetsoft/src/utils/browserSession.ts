@@ -102,12 +102,22 @@ export async function getPage(headless: boolean = false): Promise<Page> {
     // Configurar listener para capturar mensagens e erros do console
     page.on('console', msg => {
       const text = msg.text();
-      if (msg.type() === 'error' || text.includes('401') || text.includes('Unauthorized')) {
+      
+      // Verificar se é um erro real de console
+      if (msg.type() === 'error') {
         console.log(`Erro no console do navegador: ${text}`);
-        if (text.includes('401') || text.includes('Unauthorized')) {
-          console.log('Detectado erro 401 no console, marcando sessão como expirada');
-          isLoggedIn = false;
-        }
+      }
+      
+      // Verificar se é um erro de autorização HTTP 401
+      // Usando regex para garantir que seja realmente um código HTTP 401 e não um ID
+      if ((text.match(/\bHTTP 401\b/) || 
+           text.match(/\bstatus 401\b/) || 
+           text.match(/\bcode 401\b/) || 
+           text.match(/\berror 401\b/) || 
+           text.includes('Unauthorized') || 
+           text.includes('Not authorized'))) {
+        console.log('Detectado erro 401 no console, marcando sessão como expirada');
+        isLoggedIn = false;
       }
     });
     
