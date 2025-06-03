@@ -107,7 +107,9 @@ router.post('/animais', async (req, res) => {
     let animalExistente = null;
     if (animal.id_vetsoft) {
       try {
-        animalExistente = await verificarAnimal(animal.id_vetsoft);
+        // Garantir que id_vetsoft seja um número
+        const idVetsoft = Number(animal.id_vetsoft);
+        animalExistente = await verificarAnimal(idVetsoft);
       } catch (error: any) {
         console.error('Erro ao verificar animal existente:', error);
         return res.status(500).json({
@@ -269,7 +271,9 @@ router.post('/animais/batch', async (req, res) => {
         let animalExistente = null;
         if (animal.id_vetsoft) {
           try {
-            animalExistente = await verificarAnimal(animal.id_vetsoft);
+            // Garantir que id_vetsoft seja um número
+            const idVetsoft = Number(animal.id_vetsoft);
+            animalExistente = await verificarAnimal(idVetsoft);
           } catch (error: any) {
             console.error('Erro ao verificar animal existente:', error);
             throw new Error(`Erro ao verificar animal existente: ${error.message}`);
@@ -460,7 +464,7 @@ router.post('/animais/csv', async (req, res) => {
       });
       
       // Converter campos numéricos
-      if (animal.id_vetsoft) animal.id_vetsoft = parseInt(animal.id_vetsoft);
+      if (animal.id_vetsoft) animal.id_vetsoft = parseInt(animal.id_vetsoft.toString());
       if (animal.idade_anos) animal.idade_anos = parseInt(animal.idade_anos);
       if (animal.idade_meses) animal.idade_meses = parseInt(animal.idade_meses);
       
@@ -478,7 +482,7 @@ router.post('/animais/csv', async (req, res) => {
         // Verificar se temos o ID do tutor em diferentes formatos de coluna
         let tutorId = null;
         
-        // Verificar diferentes formatos possíveis da coluna tutor_id
+        // Verificar diferentes formatos possíveis da coluna id_vetsoft do tutor
         if (animal.tutor_id) {
           tutorId = animal.tutor_id;
         } else if (animal['Tutor ID']) {
@@ -489,6 +493,12 @@ router.post('/animais/csv', async (req, res) => {
           animal.tutor_id = tutorId; // Normalizar para o formato padrão
         } else if (animal['TUTOR_ID']) {
           tutorId = animal['TUTOR_ID'];
+          animal.tutor_id = tutorId; // Normalizar para o formato padrão
+        } else if (animal['codigo_tutor']) {
+          tutorId = animal['codigo_tutor'];
+          animal.tutor_id = tutorId; // Normalizar para o formato padrão
+        } else if (animal['Código Tutor']) {
+          tutorId = animal['Código Tutor'];
           animal.tutor_id = tutorId; // Normalizar para o formato padrão
         }
         
@@ -536,11 +546,50 @@ router.post('/animais/csv', async (req, res) => {
       
       // Processar cada animal
       for (const animal of animais) {
+        // Verificar se o id_vetsoft está presente (obrigatório)
+        const idVetSoftStr = String(animal.id_vetsoft);
+        if (!animal.id_vetsoft || idVetSoftStr === '' || idVetSoftStr === '0') {
+          console.error(`Animal ${animal.nome} não possui ID VetSoft válido. Este campo é obrigatório.`);
+          resultados.erros++;
+          resultados.detalhes.push({
+            id_vetsoft: null,
+            nome: animal.nome || 'Sem nome',
+            tutor_nome: animal.tutor_nome || 'Sem tutor',
+            sucesso: false,
+            atualizado: false,
+            mensagem: 'ID VetSoft válido é obrigatório'
+          });
+          continue; // Pula para o próximo animal
+        }
+        
+        // Converter campos numéricos
+        try {
+          // Garantir que id_vetsoft seja convertido para número
+          const idVetSoftNumerico = Number(animal.id_vetsoft);
+          if (isNaN(idVetSoftNumerico)) {
+            throw new Error('ID VetSoft inválido');
+          }
+          animal.id_vetsoft = idVetSoftNumerico;
+        } catch (error) {
+          console.error(`Animal ${animal.nome} possui ID VetSoft inválido: ${animal.id_vetsoft}`);
+          resultados.erros++;
+          resultados.detalhes.push({
+            id_vetsoft: null,
+            nome: animal.nome || 'Sem nome',
+            tutor_nome: animal.tutor_nome || 'Sem tutor',
+            sucesso: false,
+            atualizado: false,
+            mensagem: 'ID VetSoft inválido (deve ser um número)'
+          });
+          continue; // Pula para o próximo animal
+        }
         try {
           // Verificar se o animal já existe
           let animalExistente = null;
           if (animal.id_vetsoft) {
-            animalExistente = await verificarAnimal(animal.id_vetsoft);
+            // Garantir que id_vetsoft seja um número antes de chamar verificarAnimal
+            const idVetsoft = Number(animal.id_vetsoft);
+            animalExistente = await verificarAnimal(idVetsoft);
           }
           
           let resultado;
@@ -700,6 +749,12 @@ function safeDate(dateString: string | null | undefined): Date | null {
 function mapearColuna(coluna: string): string {
   const mapeamento: Record<string, string> = {
     'ID': 'id_vetsoft',
+    'id': 'id_vetsoft',
+    'Id': 'id_vetsoft',
+    'Código': 'id_vetsoft',
+    'Codigo': 'id_vetsoft',
+    'código': 'id_vetsoft',
+    'codigo': 'id_vetsoft',
     'Nome': 'nome',
     'Espécie': 'especie',
     'Raça': 'raca',
@@ -710,6 +765,10 @@ function mapearColuna(coluna: string): string {
     'Data Peso': 'data_peso', // Não usado no banco, apenas informativo
     'Porte': 'porte',
     'Data Nascimento': 'dt_nascimento',
+    'data_nascimento': 'dt_nascimento',
+    'DataNascimento': 'dt_nascimento',
+    'dataNascimento': 'dt_nascimento',
+    'dt_nascimento': 'dt_nascimento',
     'Data Óbito': 'data_obito', // Não usado no banco, apenas informativo
     'Esterilizado': 'esterilizacao',
     'Pelagem': 'pelagem',
