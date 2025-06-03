@@ -36,7 +36,7 @@ export async function configurarPeriodoPersonalizado(
     
     // Converter as datas para o formato esperado (DD/MM/YYYY)
     const [diaInicial, mesInicial, anoInicial] = dataInicial.split('/').map(Number);
-    const [diaFinal, mesFinal, anoFinal] = dataFinal.split('/').map(Number);
+    let [diaFinal, mesFinal, anoFinal] = dataFinal.split('/').map(Number);
     
     // Ajustar índices de mês (0-11 para JavaScript)
     const mesInicialIndex = mesInicial - 1;
@@ -158,6 +158,16 @@ export async function configurarPeriodoPersonalizado(
     
     await page.waitForTimeout(1000);
     
+    // Verificar se o mês inicial e final são os mesmos
+    const mesmoMes = mesInicial === mesFinal && anoInicial === anoFinal;
+    console.log(`Período no mesmo mês: ${mesmoMes}`);
+    
+    // Função auxiliar para obter o nome do mês
+    function obterNomeMes(indice: number): string {
+      const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      return meses[indice];
+    }
+    
     // Primeiro precisamos verificar o mês atual exibido no calendário
     const mesEsquerdoAtual = await page.locator('.drp-calendar.left .month').textContent();
     const mesDireitoAtual = await page.locator('.drp-calendar.right .month').textContent();
@@ -184,7 +194,7 @@ export async function configurarPeriodoPersonalizado(
     if (diferencaMeses !== 0) {
       if (diferencaMeses > 0) {
         // Navegar para frente
-        console.log(`Navegando ${diferencaMeses} meses para frente para chegar a ${mesFinal}/${anoFinal}...`);
+        console.log(`Clicando no botão 'next' ${diferencaMeses} vezes para chegar a ${mesFinal}/${anoFinal}...`);
         for (let i = 0; i < diferencaMeses; i++) {
           await page.locator('.drp-calendar.right .next.available').click();
           await page.waitForTimeout(500);
@@ -192,7 +202,7 @@ export async function configurarPeriodoPersonalizado(
       } else {
         // Navegar para trás
         const passosTras = Math.abs(diferencaMeses);
-        console.log(`Navegando ${passosTras} meses para trás para chegar a ${mesFinal}/${anoFinal}...`);
+        console.log(`Clicando no botão 'prev' ${passosTras} vezes para chegar a ${mesFinal}/${anoFinal}...`);
         for (let i = 0; i < passosTras; i++) {
           await page.locator('.drp-calendar.left .prev.available').click();
           await page.waitForTimeout(500);
@@ -216,25 +226,14 @@ export async function configurarPeriodoPersonalizado(
     
     await page.waitForTimeout(1000);
     
-    // Função auxiliar para obter o nome do mês
-    function obterNomeMes(indice: number): string {
-      const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-      return meses[indice];
-    }
+    // Selecionar o dia final no calendário apropriado (mesmo calendário se for o mesmo mês)
+    console.log(`Selecionando dia ${diaFinal} no calendário ${mesmoMes ? 'esquerdo' : 'apropriado'}`);
     
-    // Selecionar o dia final no calendário direito
-    console.log(`Selecionando dia ${diaFinal} no calendário direito`);
-    
-    // Verificar em qual calendário (esquerdo ou direito) está o mês correto para a data final
-    // Obter o mês exibido em cada calendário
+    // Obter o mês exibido em cada calendário após a navegação
     const mesEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
     const mesDireito = await page.locator('.drp-calendar.right .month').textContent();
     console.log(`Mês exibido no calendário esquerdo: ${mesEsquerdo}`);
     console.log(`Mês exibido no calendário direito: ${mesDireito}`);
-    
-    // Determinar qual calendário usar para a data final
-    const mesFinalNome = obterNomeMes(mesFinal - 1); // -1 porque os meses em JS são 0-indexed
-    console.log(`Procurando mês ${mesFinalNome} para a data final`);
     
     // Extrair os meses e anos dos calendários
     const mesEsquerdoMatch = mesEsquerdo?.match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s+(\d{4})/);
@@ -245,14 +244,26 @@ export async function configurarPeriodoPersonalizado(
     
     console.log(`Mês esquerdo: ${mesEsquerdoNome}, Mês direito: ${mesDireitoNome}`);
     
+    // Determinar qual calendário usar para a data final
+    const mesFinalNome = obterNomeMes(mesFinal - 1); // -1 porque os meses em JS são 0-indexed
+    
     // Determinar qual calendário usar com base no mês
     const usarCalendarioEsquerdo = mesEsquerdoNome.toLowerCase().includes(mesFinalNome.toLowerCase());
     const usarCalendarioDireito = mesDireitoNome.toLowerCase().includes(mesFinalNome.toLowerCase());
     
     console.log(`Usar calendário esquerdo: ${usarCalendarioEsquerdo}, Usar calendário direito: ${usarCalendarioDireito}`);
     
+    // Se for o mesmo mês, sempre usar o calendário onde o mês foi encontrado
+    // Se não for o mesmo mês, usar o calendário onde o mês final foi encontrado
     // Se não encontrou o mês em nenhum dos calendários, usar o esquerdo por padrão
-    const seletorCalendario = usarCalendarioEsquerdo ? '.drp-calendar.left' : (usarCalendarioDireito ? '.drp-calendar.right' : '.drp-calendar.left');
+    let seletorCalendario;
+    if (mesmoMes) {
+      // Se for o mesmo mês, usar o mesmo calendário onde a data inicial foi selecionada
+      seletorCalendario = '.drp-calendar.left';
+      console.log('Período no mesmo mês, usando o calendário esquerdo para ambas as datas');
+    } else {
+      seletorCalendario = usarCalendarioEsquerdo ? '.drp-calendar.left' : (usarCalendarioDireito ? '.drp-calendar.right' : '.drp-calendar.left');
+    }
     console.log(`Usando seletor de calendário: ${seletorCalendario}`);
     
     // Estratégia 1: Tentar selecionar pelo texto do dia (incluindo todos os dias disponíveis, mesmo com classes adicionais)
@@ -261,12 +272,30 @@ export async function configurarPeriodoPersonalizado(
     
     console.log(`Encontrados ${diasCalendarioCount} dias disponíveis no calendário selecionado`);
     
-    // Imprimir todos os dias disponíveis para debug
+    // Coletar todos os dias disponíveis para debug e para encontrar o último dia do mês
     console.log('Dias disponíveis no calendário:');
+    const diasDisponiveis = [];
     for (let i = 0; i < diasCalendarioCount; i++) {
       const texto = await diasCalendario.nth(i).textContent();
       const classes = await diasCalendario.nth(i).getAttribute('class') || '';
+      const diaNumero = texto ? parseInt(texto.trim()) : 0;
+      
+      // Verificar se o dia pertence ao mês atual (não tem a classe 'off')
+      if (!classes.includes('off') && diaNumero > 0) {
+        diasDisponiveis.push(diaNumero);
+      }
       console.log(`- Dia ${texto?.trim()} (classes: ${classes})`);
+    }
+    
+    // Ordenar os dias disponíveis para encontrar o último dia do mês
+    diasDisponiveis.sort((a, b) => a - b);
+    const ultimoDiaMes = diasDisponiveis.length > 0 ? diasDisponiveis[diasDisponiveis.length - 1] : 0;
+    console.log(`Último dia disponível no mês: ${ultimoDiaMes}`);
+    
+    // Se o dia final solicitado for maior que o último dia disponível, ajustar para o último dia
+    if (diaFinal > ultimoDiaMes && ultimoDiaMes > 0) {
+      console.log(`Dia ${diaFinal} não disponível, ajustando para o último dia do mês: ${ultimoDiaMes}`);
+      diaFinal = ultimoDiaMes;
     }
     
     let diaFinalEncontrado = false;
@@ -287,10 +316,13 @@ export async function configurarPeriodoPersonalizado(
     if (!diaFinalEncontrado) {
       console.log('Tentando selecionar dia final pelo atributo data-title...');
       
-      // Procurar em todas as células do calendário direito
+      // Determinar qual calendário usar (esquerdo ou direito)
+      const calendarioSeletor = mesmoMes ? '.drp-calendar.left' : seletorCalendario;
+      
+      // Procurar em todas as células do calendário selecionado
       for (let linha = 0; linha < 6; linha++) {
         for (let coluna = 0; coluna < 7; coluna++) {
-          const celula = page.locator(`.drp-calendar.right td[data-title="r${linha}c${coluna}"]`);
+          const celula = page.locator(`${calendarioSeletor} td[data-title="r${linha}c${coluna}"]`);
           if (await celula.isVisible()) {
             const texto = await celula.textContent();
             if (texto && texto.trim() === diaFinal.toString() && !(await celula.getAttribute('class') || '').includes('off')) {
