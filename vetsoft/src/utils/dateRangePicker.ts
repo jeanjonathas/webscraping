@@ -93,20 +93,20 @@ export async function configurarPeriodoPersonalizado(
     console.log(`Mês desejado: ${mesInicial}, Ano desejado: ${anoInicial}`);
     
     // Calcular quantos meses precisamos voltar
-    const diferencaMeses = (anoAtual - anoInicial) * 12 + (mesAtualIndex - mesInicialIndex);
-    console.log(`Diferença de meses: ${diferencaMeses}`);
+    const diferencaMesesInicial = (anoAtual - anoInicial) * 12 + (mesAtualIndex - mesInicialIndex);
+    console.log(`Diferença de meses para data inicial: ${diferencaMesesInicial}`);
     
     // Navegar para o mês/ano inicial
-    if (diferencaMeses > 0) {
-      console.log(`Clicando no botão 'prev' ${diferencaMeses} vezes para chegar a ${mesInicial}/${anoInicial}...`);
-      for (let i = 0; i < diferencaMeses; i++) {
+    if (diferencaMesesInicial > 0) {
+      console.log(`Clicando no botão 'prev' ${diferencaMesesInicial} vezes para chegar a ${mesInicial}/${anoInicial}...`);
+      for (let i = 0; i < diferencaMesesInicial; i++) {
         await page.locator('.drp-calendar.left .prev.available').click();
         await page.waitForTimeout(500); // Pequena pausa entre cliques
       }
       await page.waitForTimeout(1000); // Aguardar um pouco mais após a navegação
-    } else if (diferencaMeses < 0) {
-      console.log(`Clicando no botão 'next' ${Math.abs(diferencaMeses)} vezes para chegar a ${mesInicial}/${anoInicial}...`);
-      for (let i = 0; i < Math.abs(diferencaMeses); i++) {
+    } else if (diferencaMesesInicial < 0) {
+      console.log(`Clicando no botão 'next' ${Math.abs(diferencaMesesInicial)} vezes para chegar a ${mesInicial}/${anoInicial}...`);
+      for (let i = 0; i < Math.abs(diferencaMesesInicial); i++) {
         await page.locator('.drp-calendar.left .next.available').click();
         await page.waitForTimeout(500); // Pequena pausa entre cliques
       }
@@ -158,34 +158,126 @@ export async function configurarPeriodoPersonalizado(
     
     await page.waitForTimeout(1000);
     
-    // Agora precisamos navegar para o mês/ano final (se diferente do inicial)
-    if (anoFinal !== anoInicial || mesFinal !== mesInicial) {
-      // Calcular a diferença de meses entre data inicial e final
-      const diferencaMesesFinal = (anoFinal - anoInicial) * 12 + (mesFinal - mesInicial);
-      
-      if (diferencaMesesFinal > 0) {
-        console.log(`Navegando ${diferencaMesesFinal} meses para frente para chegar a ${mesFinal}/${anoFinal}...`);
-        for (let i = 0; i < diferencaMesesFinal; i++) {
+    // Primeiro precisamos verificar o mês atual exibido no calendário
+    const mesEsquerdoAtual = await page.locator('.drp-calendar.left .month').textContent();
+    const mesDireitoAtual = await page.locator('.drp-calendar.right .month').textContent();
+    console.log(`Mês atual exibido no calendário esquerdo: ${mesEsquerdoAtual}`);
+    console.log(`Mês atual exibido no calendário direito: ${mesDireitoAtual}`);
+    
+    // Extrair o mês e ano atuais do calendário esquerdo
+    const mesAtualMatch = mesEsquerdoAtual?.match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s+(\d{4})/);
+    let mesAtualNome = mesAtualMatch?.[1] || '';
+    let anoAtualCalendario = parseInt(mesAtualMatch?.[2] || '0');
+    
+    // Converter nome do mês para número
+    const mesesNomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+    const mesAtualNumero = mesesNomes.findIndex(m => mesAtualNome.toLowerCase().includes(m)) + 1;
+    
+    console.log(`Mês atual do calendário: ${mesAtualNumero}, Ano atual do calendário: ${anoAtualCalendario}`);
+    console.log(`Mês desejado: ${mesFinal}, Ano desejado: ${anoFinal}`);
+    
+    // Calcular diferença de meses entre o mês atual do calendário e o mês desejado
+    const diferencaMeses = (anoFinal - anoAtualCalendario) * 12 + (mesFinal - mesAtualNumero);
+    console.log(`Diferença de meses: ${diferencaMeses}`);
+    
+    // Navegar para o mês correto
+    if (diferencaMeses !== 0) {
+      if (diferencaMeses > 0) {
+        // Navegar para frente
+        console.log(`Navegando ${diferencaMeses} meses para frente para chegar a ${mesFinal}/${anoFinal}...`);
+        for (let i = 0; i < diferencaMeses; i++) {
           await page.locator('.drp-calendar.right .next.available').click();
+          await page.waitForTimeout(500);
+        }
+      } else {
+        // Navegar para trás
+        const passosTras = Math.abs(diferencaMeses);
+        console.log(`Navegando ${passosTras} meses para trás para chegar a ${mesFinal}/${anoFinal}...`);
+        for (let i = 0; i < passosTras; i++) {
+          await page.locator('.drp-calendar.left .prev.available').click();
           await page.waitForTimeout(500);
         }
       }
       
+      // Verificar se a navegação foi bem-sucedida
       await page.waitForTimeout(1000);
+      const mesEsquerdoDepois = await page.locator('.drp-calendar.left .month').textContent();
+      const mesDireitoDepois = await page.locator('.drp-calendar.right .month').textContent();
+      console.log(`Mês esquerdo após navegação: ${mesEsquerdoDepois}`);
+      console.log(`Mês direito após navegação: ${mesDireitoDepois}`);
+      
+      // Verificar se chegamos ao mês correto
+      const mesFinalNome = obterNomeMes(mesFinal - 1); // -1 porque os meses em JS são 0-indexed
+      const mesEsquerdoCorreto = mesEsquerdoDepois?.toLowerCase().includes(mesFinalNome.toLowerCase());
+      const mesDireitoCorreto = mesDireitoDepois?.toLowerCase().includes(mesFinalNome.toLowerCase());
+      
+      console.log(`Mês esperado: ${mesFinalNome}, Mês esquerdo correto: ${mesEsquerdoCorreto}, Mês direito correto: ${mesDireitoCorreto}`);
+    }
+    
+    await page.waitForTimeout(1000);
+    
+    // Função auxiliar para obter o nome do mês
+    function obterNomeMes(indice: number): string {
+      const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      return meses[indice];
     }
     
     // Selecionar o dia final no calendário direito
     console.log(`Selecionando dia ${diaFinal} no calendário direito`);
     
-    // Estratégia 1: Tentar selecionar pelo texto do dia
-    const diasDireito = await page.locator('.drp-calendar.right td.available:not(.off)');
-    const diasDireitoCount = await diasDireito.count();
+    // Verificar em qual calendário (esquerdo ou direito) está o mês correto para a data final
+    // Obter o mês exibido em cada calendário
+    const mesEsquerdo = await page.locator('.drp-calendar.left .month').textContent();
+    const mesDireito = await page.locator('.drp-calendar.right .month').textContent();
+    console.log(`Mês exibido no calendário esquerdo: ${mesEsquerdo}`);
+    console.log(`Mês exibido no calendário direito: ${mesDireito}`);
+    
+    // Determinar qual calendário usar para a data final
+    const mesFinalNome = obterNomeMes(mesFinal - 1); // -1 porque os meses em JS são 0-indexed
+    console.log(`Procurando mês ${mesFinalNome} para a data final`);
+    
+    // Extrair os meses e anos dos calendários
+    const mesEsquerdoMatch = mesEsquerdo?.match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s+(\d{4})/);
+    const mesDireitoMatch = mesDireito?.match(/(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s+(\d{4})/);
+    
+    const mesEsquerdoNome = mesEsquerdoMatch?.[1] || '';
+    const mesDireitoNome = mesDireitoMatch?.[1] || '';
+    
+    console.log(`Mês esquerdo: ${mesEsquerdoNome}, Mês direito: ${mesDireitoNome}`);
+    
+    // Determinar qual calendário usar com base no mês
+    const usarCalendarioEsquerdo = mesEsquerdoNome.toLowerCase().includes(mesFinalNome.toLowerCase());
+    const usarCalendarioDireito = mesDireitoNome.toLowerCase().includes(mesFinalNome.toLowerCase());
+    
+    console.log(`Usar calendário esquerdo: ${usarCalendarioEsquerdo}, Usar calendário direito: ${usarCalendarioDireito}`);
+    
+    // Se não encontrou o mês em nenhum dos calendários, usar o esquerdo por padrão
+    const seletorCalendario = usarCalendarioEsquerdo ? '.drp-calendar.left' : (usarCalendarioDireito ? '.drp-calendar.right' : '.drp-calendar.left');
+    console.log(`Usando seletor de calendário: ${seletorCalendario}`);
+    
+    // Estratégia 1: Tentar selecionar pelo texto do dia (incluindo todos os dias disponíveis, mesmo com classes adicionais)
+    const diasCalendario = await page.locator(`${seletorCalendario} td.available`);
+    const diasCalendarioCount = await diasCalendario.count();
+    
+    console.log(`Encontrados ${diasCalendarioCount} dias disponíveis no calendário selecionado`);
+    
+    // Imprimir todos os dias disponíveis para debug
+    console.log('Dias disponíveis no calendário:');
+    for (let i = 0; i < diasCalendarioCount; i++) {
+      const texto = await diasCalendario.nth(i).textContent();
+      const classes = await diasCalendario.nth(i).getAttribute('class') || '';
+      console.log(`- Dia ${texto?.trim()} (classes: ${classes})`);
+    }
     
     let diaFinalEncontrado = false;
-    for (let i = 0; i < diasDireitoCount; i++) {
-      const texto = await diasDireito.nth(i).textContent();
-      if (texto && texto.trim() === diaFinal.toString()) {
-        await diasDireito.nth(i).click();
+    for (let i = 0; i < diasCalendarioCount; i++) {
+      const texto = await diasCalendario.nth(i).textContent();
+      const classes = await diasCalendario.nth(i).getAttribute('class') || '';
+      
+      // Verificar se o dia corresponde e não está na classe 'off' (mês anterior/próximo)
+      if (texto && texto.trim() === diaFinal.toString() && !classes.includes('off')) {
+        console.log(`Dia ${diaFinal} encontrado na posição ${i} com classes: ${classes}`);
+        await diasCalendario.nth(i).click();
         diaFinalEncontrado = true;
         break;
       }
@@ -213,8 +305,8 @@ export async function configurarPeriodoPersonalizado(
     }
     
     if (!diaFinalEncontrado) {
-      console.warn(`Dia ${diaFinal} não encontrado no calendário direito, selecionando o último dia disponível`);
-      await diasDireito.nth(diasDireitoCount - 1).click();
+      console.warn(`Dia ${diaFinal} não encontrado no calendário, selecionando o último dia disponível`);
+      await diasCalendario.nth(diasCalendarioCount - 1).click();
     }
     
     await page.waitForTimeout(1000);
