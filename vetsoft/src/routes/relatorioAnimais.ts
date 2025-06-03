@@ -292,6 +292,9 @@ router.get('/', async (req, res) => {
             }
             
             // Adicionar o animal à lista de dados
+            // Integrar os dados do WhatsApp diretamente nos objetos animal e tutor
+            const tutorWhatsapp = whatsappNumero || telefone.replace(/[^0-9]/g, '');
+            
             dados.push({
               id: codigoAnimal,
               nome: animalNome,
@@ -311,12 +314,14 @@ router.get('/', async (req, res) => {
               pelagem: pelagem,
               status_cadastro: statusCadastro,
               codigo_internacao: codigoInternacao,
+              // Adicionar outros campos do WhatsApp que são relevantes para o animal
+              data_inativacao_formatada: dadosWhatsapp?.dat_inativacao_f || null,
               tutor: {
                 id: codigoTutor,
                 nome: tutorNome,
-                whatsapp: whatsappNumero || telefone.replace(/[^0-9]/g, ''),
-                telefone: telefone,
-                dados_whatsapp: dadosWhatsapp
+                whatsapp: tutorWhatsapp,
+                telefone: telefone
+                // Não incluir o objeto dados_whatsapp separado
               }
             });
           } catch (error) {

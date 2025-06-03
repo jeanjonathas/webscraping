@@ -272,12 +272,35 @@
                 }
             });
             
-            // Função para converter dados para CSV
+            // Função para converter dados para CSV com suporte a objetos aninhados
             function convertToCSV(data) {
                 if (data.length === 0) return '';
                 
-                // Obter cabeçalhos (todas as propriedades dos objetos)
-                const headers = Object.keys(data[0]);
+                // Função para obter todos os cabeçalhos, incluindo objetos aninhados
+                function getAllHeaders(data) {
+                    const headers = new Set();
+                    
+                    data.forEach(item => {
+                        // Processar cada item para extrair todos os cabeçalhos possíveis
+                        Object.keys(item).forEach(key => {
+                            if (key === 'tutor') {
+                                // Para o objeto tutor, adicionar cabeçalhos prefixados
+                                if (item[key] && typeof item[key] === 'object') {
+                                    Object.keys(item[key]).forEach(tutorKey => {
+                                        headers.add(`tutor_${tutorKey}`);
+                                    });
+                                }
+                            } else {
+                                headers.add(key);
+                            }
+                        });
+                    });
+                    
+                    return Array.from(headers).sort();
+                }
+                
+                // Obter todos os cabeçalhos possíveis
+                const headers = getAllHeaders(data);
                 
                 // Criar linha de cabeçalho
                 let csvContent = headers.join(';') + '\n';
@@ -285,12 +308,37 @@
                 // Adicionar linhas de dados
                 data.forEach(item => {
                     const row = headers.map(header => {
-                        // Tratar valores nulos ou indefinidos
-                        const value = item[header] === null || item[header] === undefined ? '' : item[header];
-                        // Escapar aspas duplas e envolver em aspas se contiver vírgulas, ponto e vírgula ou quebras de linha
+                        let value = '';
+                        
+                        // Verificar se é um campo do tutor
+                        if (header.startsWith('tutor_')) {
+                            const tutorField = header.replace('tutor_', '');
+                            if (item.tutor && item.tutor[tutorField] !== undefined) {
+                                value = item.tutor[tutorField];
+                            }
+                        } else {
+                            // Campo normal do animal
+                            value = item[header] !== undefined ? item[header] : '';
+                        }
+                        
+                        // Manter booleanos como 'true'/'false'
+                        if (typeof value === 'boolean') {
+                            value = value ? 'true' : 'false';
+                        }
+                        
+                        // Tratar valores nulos, undefined ou objetos
+                        if (value === null || value === undefined) {
+                            value = '';
+                        } else if (typeof value === 'object') {
+                            // Se for um objeto (que não seja null), converter para JSON string
+                            value = JSON.stringify(value);
+                        }
+                        
+                        // Escapar aspas duplas e envolver em aspas
                         const cell = String(value).replace(/"/g, '""');
                         return `"${cell}"`;
                     });
+                    
                     csvContent += row.join(';') + '\n';
                 });
                 

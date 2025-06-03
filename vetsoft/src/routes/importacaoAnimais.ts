@@ -22,6 +22,9 @@ interface Animal {
   esterilizacao?: string;
   observacoes?: string;
   data_cadastro?: string | null;
+  // Campos temporários para processamento
+  tutor_id?: string | number;
+  tutor_nome?: string;
 }
 
 // Configuração do cliente PostgreSQL
@@ -47,7 +50,7 @@ async function verificarAnimal(id_vetsoft: number): Promise<Animal | null> {
   const pool = getPool();
   try {
     const result = await pool.query(
-      'SELECT * FROM public.pacientes WHERE id_vetsoft = $1',
+      'SELECT * FROM dranimal.pacientes WHERE id_vetsoft = $1',
       [id_vetsoft]
     );
     
@@ -70,7 +73,7 @@ async function buscarClienteId(id_vetsoft_cliente: number): Promise<number | nul
   const pool = getPool();
   try {
     const result = await pool.query(
-      'SELECT id FROM public.clientes WHERE id_vetsoft = $1',
+      'SELECT id FROM dranimal.clientes WHERE id_vetsoft = $1',
       [id_vetsoft_cliente]
     );
     
@@ -88,37 +91,7 @@ async function buscarClienteId(id_vetsoft_cliente: number): Promise<number | nul
   }
 }
 
-// Função para buscar o ID do cliente pelo nome
-async function buscarClientePorNome(nome_cliente: string): Promise<number | null> {
-  const pool = getPool();
-  try {
-    // Busca por nome exato primeiro
-    let result = await pool.query(
-      'SELECT id FROM public.clientes WHERE nome = $1',
-      [nome_cliente]
-    );
-    
-    // Se não encontrar com nome exato, tenta busca parcial
-    if (result.rows.length === 0) {
-      result = await pool.query(
-        'SELECT id FROM public.clientes WHERE nome ILIKE $1 ORDER BY id DESC LIMIT 1',
-        [`%${nome_cliente}%`]
-      );
-    }
-    
-    await pool.end();
-    
-    if (result.rows.length > 0) {
-      return result.rows[0].id;
-    }
-    
-    return null;
-  } catch (error: any) {
-    console.error('Erro ao buscar cliente por nome:', error);
-    await pool.end();
-    throw error;
-  }
-}
+// Função removida: buscarClientePorNome não é mais utilizada
 
 // Rota para importar um único animal
 router.post('/animais', async (req, res) => {
@@ -495,44 +468,32 @@ router.post('/animais/csv', async (req, res) => {
         animal.esterilizacao = 'NAO';
       }
       
-      // Buscar o ID do cliente pelo ID do VetSoft e/ou nome
+      // Buscar o ID do cliente pelo ID do VetSoft
       try {
         let clienteId = null;
         
-        // Primeiro tentar pelo ID do VetSoft
+        // Verificar se temos o ID do tutor
         if (animal.tutor_id) {
           clienteId = await buscarClienteId(parseInt(animal.tutor_id));
           if (clienteId) {
             console.log(`Cliente com ID VetSoft ${animal.tutor_id} encontrado`);
+            animal.cliente_id = clienteId;
+            
+            // Remover campos temporários
+            delete animal.tutor_id;
+            delete animal.tutor_nome;
+            
+            // Adicionar o animal à lista para processamento
+            animais.push(animal);
           } else {
-            console.warn(`Cliente com ID VetSoft ${animal.tutor_id} não encontrado, tentando pelo nome...`);
+            console.warn(`Cliente com ID VetSoft ${animal.tutor_id} não encontrado. Animal ${animal.nome} não será importado.`);
           }
-        }
-        
-        // Se não encontrou pelo ID ou não tinha ID, tentar pelo nome
-        if (!clienteId && animal.tutor_nome) {
-          clienteId = await buscarClientePorNome(animal.tutor_nome);
-          if (clienteId) {
-            console.log(`Cliente com nome "${animal.tutor_nome}" encontrado`);
-          } else {
-            console.warn(`Cliente com nome "${animal.tutor_nome}" não encontrado`);
-          }
-        }
-        
-        if (clienteId) {
-          animal.cliente_id = clienteId;
         } else {
-          console.warn(`Não foi possível encontrar o cliente para o animal ${animal.nome}`);
+          console.warn(`Animal ${animal.nome} não possui ID de tutor. Animal não será importado.`);
         }
-        
-        // Remover campos temporários
-        delete animal.tutor_id;
-        delete animal.tutor_nome;
       } catch (error) {
         console.error(`Erro ao buscar cliente para o animal ${animal.nome}:`, error);
       }
-      
-      animais.push(animal);
     }
     
     console.log(`Processados ${animais.length} animais do CSV`);
@@ -645,6 +606,7 @@ router.post('/animais/csv', async (req, res) => {
           resultados.detalhes.push({
             id_vetsoft: animal.id_vetsoft,
             nome: animal.nome,
+            tutor_nome: animal.tutor_nome,
             sucesso: true,
             atualizado: resultado.atualizado
           });
@@ -712,7 +674,14 @@ function mapearColuna(coluna: string): string {
     // Removido 'Status Cadastro': 'status' - coluna não existe na tabela pacientes
     'Tutor ID': 'tutor_id', // Campo temporário para buscar cliente_id
     'Tutor Nome': 'tutor_nome', // Não usado no banco, apenas informativo
-    'Telefone': 'telefone' // Não usado no banco, apenas informativo
+    'Telefone': 'telefone', // Não usado no banco, apenas informativo
+    // Novos campos com prefixo tutor_
+    'tutor_id': 'tutor_id',
+    'tutor_nome': 'tutor_nome',
+    'tutor_telefone': 'tutor_telefone',
+    'tutor_email': 'tutor_email',
+    'tutor_cpf': 'tutor_cpf',
+    'tutor_endereco': 'tutor_endereco'
   };
   
   return mapeamento[coluna] || coluna.toLowerCase().replace(/ /g, '_');

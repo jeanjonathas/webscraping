@@ -104,6 +104,10 @@
         <div class="header">
             <h1>Importar Animais</h1>
             <p class="lead">Selecione um arquivo CSV com dados de animais para importar</p>
+            <div class="alert alert-info">
+                <strong>Importante:</strong> O arquivo CSV deve conter a coluna <code>tutor_id</code> com o ID do tutor no VetSoft.
+                Animais sem um tutor válido não serão importados.
+            </div>
         </div>
 
         <div class="row">
@@ -348,8 +352,22 @@
                                     return;
                                 }
                                 
+                                // Verificar se há coluna tutor_id no CSV
+                                const headers = results.meta.fields || [];
+                                const hasTutorId = headers.some(header => header === 'tutor_id');
+                                
+                                if (!hasTutorId) {
+                                    // Exibir aviso sobre a falta da coluna tutor_id
+                                    const warningMessage = document.createElement('div');
+                                    warningMessage.className = 'alert alert-warning mt-2';
+                                    warningMessage.innerHTML = '<strong>Atenção:</strong> O arquivo CSV não contém a coluna "tutor_id". ' +
+                                        'Todos os animais precisam ter um ID de tutor válido para serem importados.';
+                                    fileName.parentNode.appendChild(warningMessage);
+                                }
+                                
                                 console.log(`Arquivo carregado com ${results.data.length} registros`);
                                 console.log('Exemplo do primeiro registro:', results.data[0]);
+                                console.log('Colunas do CSV:', results.meta.fields);
                             },
                             error: function(error) {
                                 console.error('Erro ao processar arquivo CSV:', error);
@@ -384,6 +402,32 @@
                 try {
                     // Obter API key
                     const apiKey = await getApiKey();
+                    
+                    // Verificar se o CSV contém as colunas necessárias
+                    const parsedData = Papa.parse(csvData, {
+                        header: true,
+                        skipEmptyLines: true
+                    });
+                    
+                    // Verificar se há coluna tutor_id no CSV
+                    const headers = parsedData.meta.fields || [];
+                    const hasTutorId = headers.some(header => header === 'tutor_id');
+                    
+                    if (!hasTutorId) {
+                        // Mostrar aviso de validação
+                        validationWarningList.innerHTML = '';
+                        const li = document.createElement('li');
+                        li.textContent = 'O arquivo CSV não contém a coluna "tutor_id". Todos os animais precisam ter um ID de tutor válido para serem importados.';
+                        validationWarningList.appendChild(li);
+                        
+                        // Esconder loading e progresso
+                        loading.style.display = 'none';
+                        progress.style.display = 'none';
+                        
+                        // Mostrar aviso
+                        validationWarning.style.display = 'block';
+                        return;
+                    }
                     
                     // Enviar dados para a API
                     const response = await fetch('/importacao-animais/animais/csv', {
@@ -429,7 +473,7 @@
                             tdNome.textContent = detalhe.nome || '-';
                             
                             const tdTutor = document.createElement('td');
-                            tdTutor.textContent = '-'; // Não temos essa informação no retorno
+                            tdTutor.textContent = detalhe.tutor_nome || '-';
                             
                             const tdStatus = document.createElement('td');
                             if (detalhe.sucesso) {
@@ -464,7 +508,7 @@
                     return data.apiKey;
                 } catch (error) {
                     console.error('Erro ao obter API key:', error);
-                    return 'Je@nfree2525'; // Fallback para a API key configurada no .env
+                    return 'supervet_vetsoft_api_2025'; // Fallback para a API key configurada
                 }
             }
         });
