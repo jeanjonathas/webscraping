@@ -125,6 +125,14 @@ export function isLockActive(): boolean {
 }
 
 /**
+ * Retorna o nome da operação atual que detém o bloqueio do semáforo
+ * @returns Nome da operação atual ou string vazia se o semáforo não estiver bloqueado
+ */
+export function getCurrentOperation(): string {
+  return currentOperation;
+}
+
+/**
  * Registra atividade para a operação atual
  * Isso evita que o semáforo seja liberado por inatividade se a operação estiver fazendo progresso
  */
@@ -181,6 +189,7 @@ export async function withLock<T>(operation: string, fn: () => Promise<T>): Prom
  * @param operation Nome da operação
  * @param fn Função a ser executada com o bloqueio
  * @param maxWaitTime Tempo máximo (em ms) para aguardar o bloqueio
+ * @param keepLock Se true, não libera o semáforo após a execução da função
  * @param activityCheckInterval Intervalo (em ms) para registrar atividade
  * @returns Resultado da função
  */
@@ -188,6 +197,7 @@ export async function withLockWait<T>(
   operation: string, 
   fn: () => Promise<T>, 
   maxWaitTime: number = 60000,
+  keepLock: boolean = false,
   activityCheckInterval: number = 10000 // 10 segundos
 ): Promise<T> {
   const startTime = Date.now();
@@ -222,7 +232,11 @@ export async function withLockWait<T>(
     // Limpar o intervalo de atividade
     clearInterval(activityInterval);
     
-    // Garantir que o bloqueio seja liberado mesmo em caso de erro
-    releaseLock(operation);
+    // Garantir que o bloqueio seja liberado mesmo em caso de erro, a menos que keepLock seja true
+    if (!keepLock) {
+      releaseLock(operation);
+    } else {
+      console.log(`Mantendo semáforo bloqueado para "${operation}" (keepLock=true)`);
+    }
   }
 }

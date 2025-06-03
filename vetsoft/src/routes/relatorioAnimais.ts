@@ -124,23 +124,24 @@ router.get('/', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
   const headless = !showBrowser;
   
+  // Definir um ID de operação único para esta requisição
   const operationId = `relatorio-animais-${Date.now()}`;
   
   console.log(`Rota /relatorio-animais foi chamada com período: ${periodo}`);
   console.log(`Parâmetros: showBrowser=${showBrowser}, forceRefresh=${forceRefresh}`);
   
   try {
-    // IMPORTANTE: Obter uma página com login já feito ANTES de adquirir o semáforo principal
-    // Isso evita deadlock entre os semáforos
-    console.log('Obtendo página com login já feito (antes do semáforo principal)...');
-    const page = await ensureLoggedIn(headless);
-    
-    // Usar o sistema de semáforo para garantir acesso exclusivo ao navegador durante toda a operação
+    // Usar withLockWait para adquirir o semáforo para toda a operação
     const result = await withLockWait<{ success: boolean; data?: AnimalCompleto[]; csv?: string; total?: number; error?: string }>(operationId, async () => {
-      console.log(`Semáforo adquirido para ${operationId}, iniciando navegação...`);
+      console.log(`Semáforo adquirido para ${operationId}, iniciando login...`);
       
-      // Navegar para a página de relatório de animais
-      console.log(`Iniciando navegação com navegador ${showBrowser ? 'visível' : 'headless'}...`);
+      // Obter página com login já feito, mas sem manter o semáforo de login (keepLock=false)
+      // pois já estamos dentro do semáforo principal
+      console.log('Obtendo página com login...');
+      const page = await ensureLoggedIn(headless, false); // keepLock=false pois já estamos dentro do semáforo principal
+      
+      console.log('Login concluído, iniciando navegação para relatório de animais...');
+      
       // Navegar para a página de relatórios
       await page.goto('https://dranimal.vetsoft.com.br/m/relatorios/', { waitUntil: 'networkidle' });
       await page.waitForTimeout(2000);
@@ -162,8 +163,8 @@ router.get('/', async (req, res) => {
         // Clicar no campo de data
         await page.getByRole('textbox', { name: 'Data Cadastro' }).click();
         await page.waitForTimeout(1000);
-        
-        // Clicar em "Escolher período"
+      
+      // Clicar em "Escolher período"
         await page.getByText('Escolher período').click();
         await page.waitForTimeout(1000);
         
@@ -817,6 +818,10 @@ router.get('/exportar-csv', async (req, res) => {
       success: false,
       error: error.message || 'Erro desconhecido'
     });
+  } finally {
+    // Não precisamos liberar o semáforo manualmente aqui
+    // O withLockWait já cuida de liberar o semáforo automaticamente no seu bloco finally
+    console.log('Operação concluída');
   }
   
   // Retorno explícito para satisfazer o TypeScript

@@ -181,7 +181,7 @@ export async function getPage(headless: boolean = false): Promise<Page> {
 }
 
 // Função para verificar se está logado e fazer login se necessário
-export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
+export async function ensureLoggedIn(headless: boolean = false, keepLock: boolean = false): Promise<Page> {
   const operationId = `login-${Date.now()}`;
   
   return withLockWait(operationId, async () => {
@@ -247,7 +247,7 @@ export async function ensureLoggedIn(headless: boolean = false): Promise<Page> {
     
     lastUsed = Date.now();
     return currentPage;
-  }, 120000); // Aguardar até 2 minutos pelo bloqueio
+  }, 120000, keepLock); // Aguardar até 2 minutos pelo bloqueio
 }
 
 // Função para navegar para a página de internação
