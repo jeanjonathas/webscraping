@@ -33,3 +33,21 @@ CREATE TABLE IF NOT EXISTS dranimal.animais (
     usuario_atualizacao VARCHAR(100),
     situacao VARCHAR(50)
 );
+
+-- Tabela de configuração da extensão ClickUp
+CREATE TABLE IF NOT EXISTS dranimal.clickup_config (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(100) UNIQUE NOT NULL, -- 'settings'
+    value JSONB NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Inserir configuração inicial (opcional)
+INSERT INTO dranimal.clickup_config (key, value) 
+VALUES ('settings', '{
+    "categories": ["Suporte", "Reembolso", "Exames", "Veterinário"],
+    "categoryToListMapping": {},
+    "userMapping": {},
+    "allowedLists": []
+}'::jsonb)
+ON CONFLICT (key) DO NOTHING;

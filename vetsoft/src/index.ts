@@ -16,6 +16,7 @@ import buscaClienteRouter from './routes/busca-cliente';
 import buscaClienteResumidoRouter from './routes/busca-cliente-resumido';
 import relatorioAnimaisRouter from './routes/relatorioAnimais';
 import testeDBRouter from './routes/testeDB';
+import clickupConfigRouter from './routes/clickup-config';
 import { apiKeyAuth } from './middlewares/apiKeyAuth';
 import multer from 'multer';
 import * as XLSX from 'xlsx';
@@ -102,6 +103,7 @@ app.use('/config', configRouter);
 
 // Rotas de teste do banco de dados (sem proteção de API Key)
 app.use('/teste-db', testeDBRouter);
+app.use('/api/clickup-config', clickupConfigRouter);
 
 // Página para exportar animais
 app.get('/exportar-animais', (_req, res) => {

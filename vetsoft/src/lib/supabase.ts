@@ -8,6 +8,9 @@ export const supabase = createClient(
   {
     auth: {
       persistSession: false // desabilita persistência de sessão pois é um script
+    },
+    db: {
+      schema: 'dranimal'
     }
   }
 );

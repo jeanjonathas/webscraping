@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuração ClickUp - SuperVet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .glass { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen pb-20">
+    <!-- Header -->
+    <header class="bg-white border-b sticky top-0 z-10">
+        <div class="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+            <h1 class="text-xl font-bold text-slate-800">🚀 Configuração da Extensão</h1>
+            <div id="status-badge" class="px-3 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">Carregando...</div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-6 mt-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            
+            <!-- Categorias e Mapeamento de Listas -->
+            <section class="space-y-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-700">
+                        📁 Categorias e Listas
+                    </h2>
+                    <p class="text-sm text-slate-500 mb-4">Adicione categorias (Contextos) e vincule-as a IDs de listas no ClickUp.</p>
+                    
+                    <div id="categories-container" class="space-y-3">
+                        <!-- Itens renderizados aqui -->
+                    </div>
+                    
+                    <button id="add-category" class="mt-4 w-full py-2 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-all font-medium">
+                        + Adicionar Categoria
+                    </button>
+                </div>
+            </section>
+
+            <!-- Mapeamento de Usuários -->
+            <section class="space-y-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border">
+                    <h2 class="text-lg font-semibold mb-4 flex items-center gap-2 text-slate-700">
+                        👤 Mapeamento de Usuários
+                    </h2>
+                    <p class="text-sm text-slate-500 mb-4">Vincule IDs do Chatwoot aos IDs de usuários do ClickUp.</p>
+                    
+                    <div id="users-container" class="space-y-3">
+                        <!-- Itens renderizados aqui -->
+                    </div>
+                    
+                    <button id="add-user" class="mt-4 w-full py-2 border-2 border-dashed border-slate-200 rounded-lg text-sm text-slate-400 hover:border-blue-400 hover:text-blue-500 transition-all font-medium">
+                        + Adicionar Mapeamento
+                    </button>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- Rodapé de Ações -->
+        <div class="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t flex justify-center gap-4">
+            <button onclick="window.location.reload()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 px-6 py-3 rounded-lg font-semibold transition-all">
+                Descartar
+            </button>
+            <button id="save-settings" class="bg-blue-600 hover:bg-blue-700 text-white px-10 py-3 rounded-lg font-semibold shadow-lg transition-all active:scale-95 disabled:opacity-50">
+                Salvar Configurações
+            </button>
+        </div>
+    </main>
+
+    <script>
+        let settings = {
+            categories: ["Suporte", "Reembolso", "Exames", "Veterinário"],
+            categoryToListMapping: {},
+            userMapping: {},
+            allowedLists: []
+        };
+        let apiKey = '';
+
+        async function init() {
+            try {
+                updateStatus('Carregando...', 'bg-blue-50 text-blue-600');
+                
+                // Buscar API Key
+                const keyRes = await fetch('/config/api-key');
+                const keyData = await keyRes.json();
+                apiKey = keyData.apiKey;
+
+                // Buscar Settings
+                const res = await fetch('/api/clickup-config');
+                const data = await res.json();
+                if (data && !data.error) {
+                    settings = {
+                        categories: data.categories || [],
+                        categoryToListMapping: data.categoryToListMapping || {},
+                        userMapping: data.userMapping || {},
+                        allowedLists: data.allowedLists || []
+                    };
+                }
+                
+                render();
+                updateStatus('Pronto', 'bg-green-100 text-green-700');
+            } catch (err) {
+                console.error(err);
+                updateStatus('Erro ao carregar', 'bg-red-100 text-red-700');
+            }
+        }
+
+        function updateStatus(text, classes) {
+            const badge = document.getElementById('status-badge');
+            badge.textContent = text;
+            badge.className = `px-3 py-1 rounded-full text-xs font-medium ${classes}`;
+        }
+
+        function render() {
+            renderCategories();
+            renderUsers();
+        }
+
+        function renderCategories() {
+            const container = document.getElementById('categories-container');
+            container.innerHTML = '';
+            
+            settings.categories.forEach((cat, index) => {
+                const listId = settings.categoryToListMapping[cat] || '';
+                const div = document.createElement('div');
+                div.className = 'flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-transparent hover:border-slate-200 transition-all';
+                div.innerHTML = `
+                    <input type="text" value="${cat}" onchange="updateCatName(${index}, this.value)" class="flex-1 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white" placeholder="Nome (Ex: Suporte)">
+                    <input type="text" value="${listId}" onchange="updateCatList(${index}, this.value)" class="w-32 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white" placeholder="List ID">
+                    <button onclick="removeCat(${index})" class="text-slate-400 hover:text-red-500 p-2 transition-colors">✕</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function renderUsers() {
+            const container = document.getElementById('users-container');
+            container.innerHTML = '';
+            
+            Object.entries(settings.userMapping).forEach(([cwId, cuId]) => {
+                const div = document.createElement('div');
+                div.className = 'flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-transparent hover:border-slate-200 transition-all';
+                div.innerHTML = `
+                    <input type="text" value="${cwId}" onchange="updateUserId('cw', '${cwId}', this.value)" class="w-24 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white" placeholder="CW ID">
+                    <span class="text-slate-400">➜</span>
+                    <input type="text" value="${cuId}" onchange="updateUserId('cu', '${cwId}', this.value)" class="flex-1 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white" placeholder="ClickUp User ID">
+                    <button onclick="removeUser('${cwId}')" class="text-slate-400 hover:text-red-500 p-2 transition-colors">✕</button>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // Helpers de atualização
+        window.updateCatName = (idx, val) => {
+            const oldName = settings.categories[idx];
+            const listId = settings.categoryToListMapping[oldName];
+            delete settings.categoryToListMapping[oldName];
+            settings.categories[idx] = val;
+            settings.categoryToListMapping[val] = listId;
+        };
+
+        window.updateCatList = (idx, val) => {
+            const name = settings.categories[idx];
+            settings.categoryToListMapping[name] = val;
+        };
+
+        window.removeCat = (idx) => {
+            const name = settings.categories[idx];
+            delete settings.categoryToListMapping[name];
+            settings.categories.splice(idx, 1);
+            renderCategories();
+        };
+
+        document.getElementById('add-category').onclick = () => {
+            const name = 'Nova Categoria ' + (settings.categories.length + 1);
+            settings.categories.push(name);
+            settings.categoryToListMapping[name] = '';
+            renderCategories();
+        };
+
+        window.updateUserId = (type, oldCwId, val) => {
+            if (type === 'cw') {
+                const cuId = settings.userMapping[oldCwId];
+                delete settings.userMapping[oldCwId];
+                settings.userMapping[val] = cuId;
+            } else {
+                settings.userMapping[oldCwId] = val;
+            }
+        };
+
+        window.removeUser = (cwId) => {
+            delete settings.userMapping[cwId];
+            renderUsers();
+        };
+
+        document.getElementById('add-user').onclick = () => {
+            const tempId = 'CW_' + Math.floor(Math.random() * 1000);
+            settings.userMapping[tempId] = '';
+            renderUsers();
+        };
+
+        document.getElementById('save-settings').onclick = async () => {
+            const btn = document.getElementById('save-settings');
+            btn.disabled = true;
+            btn.textContent = 'Salvando...';
+            
+            try {
+                const res = await fetch('/api/clickup-config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-api-key': apiKey
+                    },
+                    body: JSON.stringify({ settings })
+                });
+                
+                if (res.ok) {
+                    alert('Configurações salvas com sucesso!');
+                    init();
+                } else {
+                    const err = await res.json();
+                    alert('Erro ao salvar: ' + (err.error || 'Erro desconhecido'));
+                }
+            } catch (err) {
+                alert('Erro na conexão: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Salvar Configurações';
+            }
+        };
+
+        init();
+    </script>
+</body>
+</html>
