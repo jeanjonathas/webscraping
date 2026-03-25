@@ -24,10 +24,10 @@ router.get('/', async (_req, res) => {
       }
       throw error;
     }
-    res.json(data.value);
+    return res.json(data.value);
   } catch (err: any) {
     console.error('Erro ao buscar config ClickUp:', err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
@@ -44,10 +44,10 @@ router.post('/', apiKeyAuth, async (req, res) => {
       .select();
 
     if (error) throw error;
-    res.json({ success: true, data });
+    return res.json({ success: true, data });
   } catch (err: any) {
     console.error('Erro ao salvar config ClickUp:', err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 

@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
 import agendamentosRouter from './routes/consulta';
@@ -106,32 +106,36 @@ app.use('/teste-db', testeDBRouter);
 app.use('/api/clickup-config', clickupConfigRouter);
 
 // Página para exportar animais
-app.get('/exportar-animais', (_req, res) => {
+app.get('/exportar-animais', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/exportar-animais.html'));
 });
 
 // Página de configuração do ClickUp
-app.get(['/clickup', '/clickup-config'], (_req, res) => {
+app.get('/clickup', (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, '../public/clickup-config.html'));
+});
+
+app.get('/clickup-config', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/clickup-config.html'));
 });
 
 // Página para importar animais
-app.get('/importar-animais', (_req, res) => {
+app.get('/importar-animais', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/importar-animais.html'));
 });
 
 // Página para importar tutores
-app.get('/importar-tutores', (_req, res) => {
+app.get('/importar-tutores', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/importar-tutores.html'));
 });
 
 // Página para exportar relatório de animais
-app.get('/exportar-relatorio-animais', (_req, res) => {
+app.get('/exportar-relatorio-animais', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/exportar-relatorio-animais.html'));
 });
 
 // API para importação de clientes
-app.post('/api/importar-clientes', upload.single('file'), async (req, res) => {
+app.post('/api/importar-clientes', upload.single('file'), async (req: Request, res: Response) => {
   if (!req.file) {
     return res.status(400).json({ error: 'Nenhum arquivo enviado' });
   }
@@ -216,7 +220,7 @@ app.post('/api/importar-clientes', upload.single('file'), async (req, res) => {
 });
 
 // Rota para importação de clientes
-app.get('/importar-clientes', (_req, res) => {
+app.get('/importar-clientes', (_req: Request, res: Response) => {
   res.send(`
     <!DOCTYPE html>
     <html>
