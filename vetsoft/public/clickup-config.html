@@ -80,17 +80,23 @@
             allowedLists: []
         };
         let apiKey = '';
+        let cwAgents = [];
+        let cuMembers = [];
+
+        // Tokens fixos (baseados no código da extensão)
+        const CW_TOKEN = 't2WSy124nKUdZNNicGpvdf1J';
+        const CU_TOKEN = 'pk_44259220_SED8S4GTHY03J0RRRDST1I9NQ71PFQU1';
 
         async function init() {
             try {
                 updateStatus('Carregando...', 'bg-blue-50 text-blue-600');
                 
-                // Buscar API Key
+                // 1. Buscar API Key do Servidor
                 const keyRes = await fetch('/config/api-key');
                 const keyData = await keyRes.json();
                 apiKey = keyData.apiKey;
 
-                // Buscar Settings
+                // 2. Buscar Settings
                 const res = await fetch('/api/clickup-config');
                 const data = await res.json();
                 if (data && !data.error) {
@@ -101,6 +107,25 @@
                         allowedLists: data.allowedLists || []
                     };
                 }
+
+                // 3. Buscar Usuários Chatwoot
+                try {
+                    const cwRes = await fetch('https://atendimento.supervet.app/api/v1/accounts/1/agents', {
+                        headers: { 'api_access_token': CW_TOKEN }
+                    });
+                    cwAgents = await cwRes.json();
+                } catch (e) { console.error('Erro CW:', e); }
+
+                // 4. Buscar Usuários ClickUp
+                try {
+                    const teamsRes = await fetch('https://api.clickup.com/api/v2/team', {
+                        headers: { 'Authorization': CU_TOKEN }
+                    });
+                    const teamsData = await teamsRes.json();
+                    if (teamsData.teams && teamsData.teams.length > 0) {
+                        cuMembers = teamsData.teams[0].members || [];
+                    }
+                } catch (e) { console.error('Erro CU:', e); }
                 
                 render();
                 updateStatus('Pronto', 'bg-green-100 text-green-700');
@@ -145,10 +170,24 @@
             Object.entries(settings.userMapping).forEach(([cwId, cuId]) => {
                 const div = document.createElement('div');
                 div.className = 'flex gap-2 items-center bg-slate-50 p-2 rounded-lg border border-transparent hover:border-slate-200 transition-all';
+                
+                // Opções Chatwoot
+                const cwOptions = cwAgents.map(a => `<option value="${a.id}" ${a.id == cwId ? 'selected' : ''}>${a.name} (${a.id})</option>`).join('');
+                // Opções ClickUp
+                const cuOptions = cuMembers.map(m => `<option value="${m.user.id}" ${m.user.id == cuId ? 'selected' : ''}>${m.user.username} (${m.user.id})</option>`).join('');
+
                 div.innerHTML = `
-                    <input type="text" value="${cwId}" onchange="updateUserId('cw', '${cwId}', this.value)" class="w-24 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white" placeholder="CW ID">
+                    <select onchange="updateUserId('cw', '${cwId}', this.value)" class="w-40 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white">
+                        <option value="">Chatwoot...</option>
+                        <option value="${cwId}" ${!cwAgents.find(a=>a.id==cwId) ? 'selected' : ''}>ID: ${cwId}</option>
+                        ${cwOptions}
+                    </select>
                     <span class="text-slate-400">➜</span>
-                    <input type="text" value="${cuId}" onchange="updateUserId('cu', '${cwId}', this.value)" class="flex-1 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white" placeholder="ClickUp User ID">
+                    <select onchange="updateUserId('cu', '${cwId}', this.value)" class="flex-1 px-3 py-2 border rounded-md text-sm border-slate-200 focus:border-blue-500 outline-none bg-white">
+                        <option value="">ClickUp...</option>
+                        <option value="${cuId}" ${!cuMembers.find(m=>m.user.id==cuId) ? 'selected' : ''}>ID: ${cuId}</option>
+                        ${cuOptions}
+                    </select>
                     <button onclick="removeUser('${cwId}')" class="text-slate-400 hover:text-red-500 p-2 transition-colors">✕</button>
                 `;
                 container.appendChild(div);
@@ -188,6 +227,7 @@
                 const cuId = settings.userMapping[oldCwId];
                 delete settings.userMapping[oldCwId];
                 settings.userMapping[val] = cuId;
+                renderUsers(); // Re-render para atualizar as chaves no objeto
             } else {
                 settings.userMapping[oldCwId] = val;
             }
@@ -199,9 +239,11 @@
         };
 
         document.getElementById('add-user').onclick = () => {
-            const tempId = 'CW_' + Math.floor(Math.random() * 1000);
-            settings.userMapping[tempId] = '';
-            renderUsers();
+            const nextCwId = cwAgents.length > 0 ? cwAgents[0].id : 'new_' + Math.floor(Math.random() * 100);
+            if (!settings.userMapping[nextCwId]) {
+                settings.userMapping[nextCwId] = '';
+                renderUsers();
+            }
         };
 
         document.getElementById('save-settings').onclick = async () => {
