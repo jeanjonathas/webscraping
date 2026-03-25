@@ -11,6 +11,11 @@ services:
     environment:
       - POSTGRES_PASSWORD=1f61169e2e053dd4688a2624859626c0
       - PG_MAX_CONNECTIONS=500
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     deploy:
       mode: replicated
       replicas: 1
@@ -52,6 +57,8 @@ services:
       npx playwright install chromium &&
       echo 'Compilando TypeScript...' &&
       npm run build &&
+      echo 'Aguardando estabilização do banco...' &&
+      sleep 10 &&
       echo 'Configurando banco de dados (PostgreSQL)...' &&
       npx ts-node src/scripts/setup-clickup-db.ts || echo 'Aviso: Falha ao configurar banco, ignorando...' &&
       echo 'Verificando middleware de autenticação...' &&
@@ -81,7 +88,8 @@ services:
     networks:
       - vetsoft_network
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     deploy:
       mode: replicated
       replicas: 1
