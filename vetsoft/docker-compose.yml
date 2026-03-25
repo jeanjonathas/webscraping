@@ -52,6 +52,8 @@ services:
       npx playwright install chromium &&
       echo 'Compilando TypeScript...' &&
       npm run build &&
+      echo 'Configurando banco de dados (PostgreSQL)...' &&
+      npx ts-node src/scripts/setup-clickup-db.ts || echo 'Aviso: Falha ao configurar banco, ignorando...' &&
       echo 'Verificando middleware de autenticação...' &&
       ls -la dist/middlewares/ || true &&
       echo 'Iniciando servidor...' &&
@@ -78,6 +80,8 @@ services:
       - vetsoft_data:/app
     networks:
       - vetsoft_network
+    depends_on:
+      - postgres
     deploy:
       mode: replicated
       replicas: 1

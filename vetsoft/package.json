@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "sync": "ts-node src/scripts/sync-clientes.ts",
     "setup-db": "ts-node src/scripts/setup-database.ts",
+    "setup-clickup": "ts-node src/scripts/setup-clickup-db.ts",
     "extrair-animais": "ts-node src/scripts/extrair-animais.ts"
   },
   "dependencies": {
