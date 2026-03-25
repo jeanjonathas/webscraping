@@ -88,8 +88,7 @@ services:
     networks:
       - vetsoft_network
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     deploy:
       mode: replicated
       replicas: 1
