@@ -129,7 +129,7 @@ app.get('/importar-tutores', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/importar-tutores.html'));
 });
 
-// Página para exportar relatório de animais
+// Rota para exportar relatório de animais
 app.get('/exportar-relatorio-animais', (_req: Request, res: Response) => {
   res.sendFile(path.join(__dirname, '../public/exportar-relatorio-animais.html'));
 });
@@ -330,6 +330,11 @@ app.get('/importar-clientes', (_req: Request, res: Response) => {
       </body>
     </html>
   `);
+});
+
+// Handler global para rotas não encontradas (404) que deveriam ser API
+app.use('/api/*', (_req, res) => {
+  res.status(404).json({ error: 'Rota não encontrada (API)', path: _req.originalUrl });
 });
 
 app.listen(port, () => {
