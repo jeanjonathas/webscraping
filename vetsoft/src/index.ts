@@ -111,7 +111,7 @@ app.get('/exportar-animais', (_req, res) => {
 });
 
 // Página de configuração do ClickUp
-app.get('/clickup-config', (_req, res) => {
+app.get(['/clickup', '/clickup-config'], (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/clickup-config.html'));
 });
 
