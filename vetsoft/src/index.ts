@@ -110,6 +110,11 @@ app.get('/exportar-animais', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/exportar-animais.html'));
 });
 
+// Página de configuração do ClickUp
+app.get('/clickup-config', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/clickup-config.html'));
+});
+
 // Página para importar animais
 app.get('/importar-animais', (_req, res) => {
   res.sendFile(path.join(__dirname, '../public/importar-animais.html'));
